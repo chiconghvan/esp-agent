@@ -170,7 +170,7 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
         task_record_t t;
         if (task_database_read(id, &t) == ESP_OK) {
             char title_tmp[64];
-            strncpy(title_tmp, t.title, 63); title_tmp[63] = "\0";
+            strncpy(title_tmp, t.title, 63); title_tmp[63] = '\0';
 
             if (task_database_hard_delete(id) == ESP_OK) {
                 vector_search_delete(id);

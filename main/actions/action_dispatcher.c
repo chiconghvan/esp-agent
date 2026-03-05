@@ -28,6 +28,7 @@ static const char *TAG = "dispatcher";
 /* Context: danh sách task ID đang hiển thị cho user */
 static uint32_t s_context_task_ids[20];
 static int s_context_task_count = 0;
+static char s_last_action_json[JSON_BUFFER_SIZE] = "(chưa có action nào)";
 
 void dispatcher_set_context_tasks(const uint32_t *ids, int count)
 {
@@ -38,12 +39,19 @@ void dispatcher_set_context_tasks(const uint32_t *ids, int count)
     }
 }
 
+void action_dispatcher_get_last_json(char *buffer, size_t buffer_size)
+{
+    if (buffer == NULL || buffer_size == 0) return;
+    strncpy(buffer, s_last_action_json, buffer_size - 1);
+    buffer[buffer_size - 1] = '\0';
+}
+
 /* ==========================================================================
  * PROMPT B1: Intent Classification (ngắn gọn, ~500 tokens)
  * ========================================================================== */
 static const char *PROMPT_B1 =
     "Bạn là bộ phân loại ý định cho hệ thống quản lý công việc.\n"
-    "Hôm nay: %s (%s).\n"
+    "Thời gian hiện tại: %s, %s (%s).\n"
     "Context IDs đang hiển thị: [%s].\n\n"
     "Phân loại tin nhắn vào ĐÚNG 1 trong 9 intent:\n\n"
     "MUTATION:\n"
@@ -76,7 +84,7 @@ static const char *PROMPT_B1 =
  * ========================================================================== */
 
 static const char *PROMPT_B2_CREATE =
-    "Bạn là parser dữ liệu task. Hôm nay: %s (%s).\n"
+    "Bạn là parser dữ liệu task. Hiện tại: %s, %s (%s).\n"
     "Intent: CREATE_TASK\n"
     "User: \"%s\"\n\n"
     "Parse thông tin và trả JSON:\n"
@@ -98,7 +106,7 @@ static const char *PROMPT_B2_CREATE =
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_QUERY =
-    "Bạn là parser truy vấn. Hôm nay: %s (%s).\n"
+    "Bạn là parser truy vấn. Hiện tại: %s, %s (%s).\n"
     "Intent: QUERY_TASKS\n"
     "User: \"%s\"\n\n"
     "Phân tích CẨN THẬN tất cả điều kiện. Mỗi điều kiện = 1 filter.\n\n"
@@ -127,7 +135,7 @@ static const char *PROMPT_B2_QUERY =
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_MUTATE =
-    "Bạn là parser hành động. Hôm nay: %s (%s).\n"
+    "Bạn là parser hành động. Hiện tại: %s, %s (%s).\n"
     "Intent: %s\n"
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
@@ -157,7 +165,7 @@ static const char *PROMPT_B2_MUTATE =
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
-    "Bạn là parser truy vấn chi tiết. Hôm nay: %s (%s).\n"
+    "Bạn là parser truy vấn chi tiết. Hiện tại: %s, %s (%s).\n"
     "Intent: GET_TASK_DETAIL\n"
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
@@ -178,7 +186,7 @@ static const char *PROMPT_B2_SEARCH =
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =
-    "Bạn là parser thống kê. Hôm nay: %s (%s).\n"
+    "Bạn là parser thống kê. Hiện tại: %s, %s (%s).\n"
     "Intent: TASK_SUMMARY\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
@@ -227,15 +235,16 @@ static esp_err_t step_b1_classify(const char *user_message,
                                    action_type_t *out_intent,
                                    float *out_confidence)
 {
-    char date_buf[32], weekday_buf[32], context_ids[128];
+    char date_buf[32], weekday_buf[32], iso_buf[32], context_ids[128];
     time_t now = time_utils_get_now();
     time_utils_format_date_short(now, date_buf, sizeof(date_buf));
     time_utils_get_weekday_name(now, weekday_buf, sizeof(weekday_buf));
+    time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     /* Build prompt B1 */
     char prompt[2048];
-    snprintf(prompt, sizeof(prompt), PROMPT_B1, date_buf, weekday_buf, context_ids);
+    snprintf(prompt, sizeof(prompt), PROMPT_B1, iso_buf, date_buf, weekday_buf, context_ids);
 
     /* Gọi AI */
     char llm_response[512];
@@ -267,10 +276,11 @@ static esp_err_t step_b2_parse(action_type_t intent,
                                 const char *user_message,
                                 char **out_data_json)
 {
-    char date_buf[32], weekday_buf[32], context_ids[128];
+    char date_buf[32], weekday_buf[32], iso_buf[32], context_ids[128];
     time_t now = time_utils_get_now();
     time_utils_format_date_short(now, date_buf, sizeof(date_buf));
     time_utils_get_weekday_name(now, weekday_buf, sizeof(weekday_buf));
+    time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     char prompt[2048];
@@ -278,32 +288,32 @@ static esp_err_t step_b2_parse(action_type_t intent,
     switch (intent) {
         case ACTION_CREATE_TASK:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_CREATE,
-                     date_buf, weekday_buf, user_message);
+                     iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_QUERY_TASKS:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_QUERY,
-                     date_buf, weekday_buf, user_message);
+                     iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_UPDATE_TASK:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
-                     date_buf, weekday_buf, "UPDATE_TASK", user_message, context_ids);
+                     iso_buf, date_buf, weekday_buf, "UPDATE_TASK", user_message, context_ids);
             break;
 
         case ACTION_COMPLETE_TASK:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
-                     date_buf, weekday_buf, "COMPLETE_TASK", user_message, context_ids);
+                     iso_buf, date_buf, weekday_buf, "COMPLETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_DELETE_TASK:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
-                     date_buf, weekday_buf, "DELETE_TASK", user_message, context_ids);
+                     iso_buf, date_buf, weekday_buf, "DELETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_GET_DETAIL:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_DETAIL,
-                     date_buf, weekday_buf, user_message, context_ids);
+                     iso_buf, date_buf, weekday_buf, user_message, context_ids);
             break;
 
         case ACTION_SEARCH_SEMANTIC:
@@ -313,7 +323,7 @@ static esp_err_t step_b2_parse(action_type_t intent,
 
         case ACTION_TASK_SUMMARY:
             snprintf(prompt, sizeof(prompt), PROMPT_B2_SUMMARY,
-                     date_buf, weekday_buf, user_message);
+                     iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         default:
@@ -333,7 +343,7 @@ static esp_err_t step_b2_parse(action_type_t intent,
         return ESP_FAIL;
     }
 
-    *out_data_json = cJSON_PrintUnformatted(parsed);
+    *out_data_json = cJSON_Print(parsed);
     cJSON_Delete(parsed);
 
     ESP_LOGI(TAG, "B2: data=%s", *out_data_json ? *out_data_json : "(null)");
@@ -358,19 +368,6 @@ esp_err_t action_dispatcher_handle(const char *user_message,
         ESP_LOGI(TAG, "Quick command: /alltask");
         const char *all_query = "{\"response_type\":\"short\",\"label\":\"tất cả công việc\",\"filters\":[]}";
         return action_query_tasks(all_query, response_buffer, buffer_size);
-    }
-
-    if (strncmp(user_message, "/t ", 3) == 0 || strcmp(user_message, "/t") == 0) {
-        uint32_t id = 0;
-        if (strlen(user_message) > 3) id = (uint32_t)atoi(user_message + 3);
-        if (id > 0) {
-            char detail_query[64];
-            snprintf(detail_query, sizeof(detail_query), "{\"task_ids\":[%lu]}", (unsigned long)id);
-            return action_get_detail(detail_query, response_buffer, buffer_size);
-        } else {
-            snprintf(response_buffer, buffer_size, "⚠️ Vui lòng nhập ID task. Ví dụ: `/t 12`.");
-            return ESP_OK;
-        }
     }
 
     if (strcmp(user_message, "/confirm") == 0) {
@@ -418,6 +415,12 @@ esp_err_t action_dispatcher_handle(const char *user_message,
         snprintf(response_buffer, buffer_size,
             "\xE2\x9A\xA0\xEF\xB8\x8F Không phân tích được yêu cầu. Vui lòng thử lại.");
         return err;
+    }
+
+    /* Lưu JSON cuối cùng để hỗ trợ lệnh /last */
+    if (data_json != NULL) {
+        strncpy(s_last_action_json, data_json, sizeof(s_last_action_json) - 1);
+        s_last_action_json[sizeof(s_last_action_json) - 1] = '\0';
     }
 
     /* ======= Dispatch đến handler ======= */

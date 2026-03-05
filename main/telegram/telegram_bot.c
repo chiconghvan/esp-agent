@@ -148,8 +148,34 @@ esp_err_t telegram_bot_get_update(telegram_message_t *message)
     /* Parse update_id */
     message->update_id = json_get_int(update, "update_id", 0);
     last_update_id = message->update_id;
+    message->is_callback = false;
+    memset(message->callback_query, 0, sizeof(message->callback_query));
 
-    /* Parse message object */
+    /* Thử parse callback_query (nút bấm) */
+    cJSON *cbq = json_get_object(update, "callback_query");
+    if (cbq != NULL) {
+        message->is_callback = true;
+        const char *data = json_get_string(cbq, "data", "");
+        strncpy(message->callback_query, data, sizeof(message->callback_query) - 1);
+        
+        /* Đối với callback, chat_id nằm trong field message.chat.id */
+        cJSON *msg_obj = json_get_object(cbq, "message");
+        if (msg_obj != NULL) {
+            cJSON *chat = json_get_object(msg_obj, "chat");
+            if (chat != NULL) {
+                message->chat_id = (int64_t)json_get_double(chat, "id", 0);
+            }
+            cJSON *from = json_get_object(cbq, "from"); // From của nút bấm
+            if (from != NULL) {
+                const char *name = json_get_string(from, "first_name", "");
+                strncpy(message->from_first_name, name, sizeof(message->from_first_name) - 1);
+            }
+        }
+        cJSON_Delete(root);
+        return ESP_OK;
+    }
+
+    /* Parse message object (tin nhắn thường) */
     cJSON *msg = json_get_object(update, "message");
     if (msg == NULL) {
         ESP_LOGW(TAG, "Update không chứa message");
@@ -268,4 +294,68 @@ esp_err_t telegram_bot_send_default(const char *text)
 {
     int64_t default_chat_id = strtoll(TELEGRAM_CHAT_ID, NULL, 10);
     return telegram_bot_send_message(default_chat_id, text);
+}
+
+/* --------------------------------------------------------------------------
+ * Gửi tin nhắn có kèm bàn phím Inline (Inline Keyboard)
+ * -------------------------------------------------------------------------- */
+esp_err_t telegram_bot_send_inline_keyboard(int64_t chat_id, const char *text, 
+                                            const char *btn_text, const char *callback_data)
+{
+    if (text == NULL || btn_text == NULL || callback_data == NULL) return ESP_ERR_INVALID_ARG;
+
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s/sendMessage", TELEGRAM_API_URL, TELEGRAM_BOT_TOKEN);
+
+    cJSON *body = cJSON_CreateObject();
+    cJSON_AddNumberToObject(body, "chat_id", (double)chat_id);
+    cJSON_AddStringToObject(body, "text", text);
+    cJSON_AddStringToObject(body, "parse_mode", "HTML");
+
+    /* Inline keyboard markup */
+    cJSON *reply_markup = cJSON_CreateObject();
+    cJSON *inline_kb_array = cJSON_CreateArray();
+    cJSON *row = cJSON_CreateArray();
+    cJSON *button = cJSON_CreateObject();
+    cJSON_AddStringToObject(button, "text", btn_text);
+    cJSON_AddStringToObject(button, "callback_data", callback_data);
+    cJSON_AddItemToArray(row, button);
+    cJSON_AddItemToArray(inline_kb_array, row);
+    cJSON_AddItemToObject(reply_markup, "inline_keyboard", inline_kb_array);
+    cJSON_AddItemToObject(body, "reply_markup", reply_markup);
+
+    char *body_str = cJSON_PrintUnformatted(body);
+    cJSON_Delete(body);
+
+    if (body_str == NULL) return ESP_ERR_NO_MEM;
+
+    response_buffer_len = 0;
+    memset(response_buffer, 0, sizeof(response_buffer));
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .timeout_ms = 10000,
+        .buffer_size = 2048,
+        .buffer_size_tx = 2048,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) { free(body_str); return ESP_FAIL; }
+
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, body_str, strlen(body_str));
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+    free(body_str);
+
+    if (err != ESP_OK || status_code != 200) {
+        ESP_LOGW(TAG, "Gửi inline keyboard thất bại (%d)", status_code);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }

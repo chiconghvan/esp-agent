@@ -118,6 +118,26 @@ char *time_utils_format_date_short(time_t timestamp, char *buffer, size_t buffer
 }
 
 /* --------------------------------------------------------------------------
+ * Format epoch thành chuỗi ISO8601 chuẩn
+ * -------------------------------------------------------------------------- */
+char *time_utils_format_iso8601(time_t timestamp, char *buffer, size_t buffer_size)
+{
+    if (timestamp == 0) {
+        snprintf(buffer, buffer_size, "null");
+        return buffer;
+    }
+
+    struct tm time_info = get_local_time(timestamp);
+
+    snprintf(buffer, buffer_size, "%04d-%02d-%02dT%02d:%02d:%02d",
+             time_info.tm_year + 1900, time_info.tm_mon + 1,
+             time_info.tm_mday, time_info.tm_hour,
+             time_info.tm_min, time_info.tm_sec);
+
+    return buffer;
+}
+
+/* --------------------------------------------------------------------------
  * Lấy thời gian hiện tại
  * -------------------------------------------------------------------------- */
 time_t time_utils_get_now(void)

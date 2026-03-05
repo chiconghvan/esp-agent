@@ -124,6 +124,25 @@ static void reminder_task(void *arg)
                 s_last_nudge_yday = tm_n.tm_yday;
             }
         }
+
+        /* === Phần 5: Daily Briefing lúc 8:00 sáng === */
+        static int s_last_briefing_yday = -1;
+        if (tm_n.tm_hour == 8 && tm_n.tm_min <= 2 && s_last_briefing_yday != tm_n.tm_yday) {
+            time_range_t today = time_utils_get_today_range();
+            int today_count = 0;
+            if (task_database_query_by_time(today.start, today.end, NULL, "pending", query_results, MAX_QUERY_RESULTS, &today_count) == ESP_OK && today_count > 0) {
+                char brief[RESPONSE_BUFFER_SIZE];
+                int w = snprintf(brief, sizeof(brief), "☀️ **CHÀO BUỔI SÁNG!**\nHôm nay bạn có %d việc cần xử lý:\n", today_count);
+                for (int j = 0; j < today_count && w < sizeof(brief) - 100; j++)
+                    w += snprintf(brief + w, sizeof(brief) - w, "\n%d. [#%lu] %s", j+1, (unsigned long)query_results[j].id, query_results[j].title);
+                
+                int64_t chat_id = strtoll(TELEGRAM_CHAT_ID, NULL, 10);
+                telegram_bot_send_inline_keyboard(chat_id, brief, "📅 Xem Deadline sắp tới", "cmd_deadline_3d");
+                s_last_briefing_yday = tm_n.tm_yday;
+            } else {
+                s_last_briefing_yday = tm_n.tm_yday; // Không có việc thì vẫn đánh dấu đã kiểm tra
+            }
+        }
     }
     free(query_results);
     scheduler_task_handle = NULL;

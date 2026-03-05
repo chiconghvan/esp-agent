@@ -77,7 +77,7 @@ char *format_task_list(const task_index_entry_t **matches, int count, const char
         return buffer;
     }
 
-    int written = snprintf(buffer, buffer_size, "📋 Lịch %s:\n───────────────\n", label);
+    int written = snprintf(buffer, buffer_size, "📋 %s:\n───────────────\n", label);
     uint32_t context_ids[20];
     int context_count = 0;
 
@@ -105,7 +105,7 @@ char *format_task_list(const task_index_entry_t **matches, int count, const char
 
         if (written + item_len + 100 > 3800) {
             telegram_bot_send_default(buffer);
-            written = snprintf(buffer, buffer_size, "📋 Lịch %s (tiếp theo):\n───────────────\n", label);
+            written = snprintf(buffer, buffer_size, "📋 %s (tiếp theo):\n───────────────\n", label);
         }
         strcat(buffer + written, item);
         written += item_len;
@@ -126,7 +126,7 @@ char *format_task_list_short(const task_index_entry_t **matches, int count, cons
         return buffer;
     }
 
-    int written = snprintf(buffer, buffer_size, "📄 Danh sách %s:\n───────────────\n", label);
+    int written = snprintf(buffer, buffer_size, "📄 %s:\n───────────────\n", label);
     uint32_t context_ids[20];
     int context_count = 0;
 
@@ -143,7 +143,7 @@ char *format_task_list_short(const task_index_entry_t **matches, int count, cons
 
         if (written + item_len + 100 > 3800) {
             telegram_bot_send_default(buffer);
-            written = snprintf(buffer, buffer_size, "📄 Danh sách %s (tiếp theo):\n───────────────\n", label);
+            written = snprintf(buffer, buffer_size, "📄 %s (tiếp theo):\n───────────────\n", label);
         }
         strcat(buffer + written, item);
         written += item_len;

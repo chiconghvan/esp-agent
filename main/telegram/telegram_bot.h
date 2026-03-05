@@ -13,6 +13,7 @@
 
 #include "esp_err.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 /**
  * @brief Cấu trúc chứa thông tin một tin nhắn Telegram nhận được
@@ -22,6 +23,8 @@ typedef struct {
     int64_t chat_id;                 /**< ID chat người gửi */
     char text[512];                  /**< Nội dung tin nhắn */
     char from_first_name[64];        /**< Tên người gửi */
+    bool is_callback;                /**< True nếu là callback query từ nút bấm */
+    char callback_query[128];        /**< Dữ liệu từ nút bấm đã nhấn */
 } telegram_message_t;
 
 /**
@@ -58,5 +61,17 @@ esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text);
  * @return esp_err_t ESP_OK nếu gửi thành công
  */
 esp_err_t telegram_bot_send_default(const char *text);
+
+/**
+ * @brief Gửi tin nhắn có kèm bàn phím Inline (Inline Keyboard)
+ *
+ * @param chat_id ID chat
+ * @param text Nội dung tin nhắn
+ * @param btn_text Chữ hiển thị trên nút bấm
+ * @param callback_data Dữ liệu callback trả về khi nhấn nút
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t telegram_bot_send_inline_keyboard(int64_t chat_id, const char *text,
+                                            const char *btn_text, const char *callback_data);
 
 #endif /* TELEGRAM_BOT_H */

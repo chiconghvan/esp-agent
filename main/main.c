@@ -110,6 +110,30 @@ static void telegram_polling_loop(void)
             continue;
         }
 
+        /* Xử lý Callback Query (nút bấm) trước */
+        if (message.is_callback) {
+            if (strcmp(message.callback_query, "cmd_deadline_3d") == 0) {
+                time_t now = time_utils_get_now();
+                time_t three_days = now + (3 * 24 * 60 * 60);
+                task_record_t results[5];
+                int found = 0;
+                task_database_query_by_time(now, three_days, NULL, "pending", results, 5, &found);
+                
+                char rep[RESPONSE_BUFFER_SIZE];
+                if (found > 0) {
+                    int w = snprintf(rep, sizeof(rep), "📅 **DEADLINE 3 NGÀY TỚI**\n───────────────\n");
+                    for (int j = 0; j < found; j++) {
+                        char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
+                        w += snprintf(rep + w, sizeof(rep) - w, "\n• [#%lu] %s\n  ⏳ Hạn: %s", (unsigned long)results[j].id, results[j].title, db);
+                    }
+                } else {
+                    snprintf(rep, sizeof(rep), "✅ Tuyệt vời! Bạn không có deadline nào trong 3 ngày tới.");
+                }
+                telegram_bot_send_message(message.chat_id, rep);
+            }
+            continue;
+        }
+
         /* Bỏ qua tin nhắn rỗng */
         if (strlen(message.text) == 0) {
             continue;
@@ -118,22 +142,44 @@ static void telegram_polling_loop(void)
         ESP_LOGI(TAG, "");
         ESP_LOGI(TAG, ">>> Tin nhắn từ %s: %s", message.from_first_name, message.text);
 
-        /* Kiểm tra lệnh đặc biệt /status */
+        /* Kiểm tra lệnh đặc biệt /status, /last, /t, /deadline, /v */
         if (strcmp(message.text, "/status") == 0) {
             memset(response, 0, sizeof(response));
             token_tracker_format_status(response, sizeof(response));
-        } else if (strncmp(message.text, "/taskid", 7) == 0) {
-            /* Lệnh /taskid <id1> <id2> ... - hiển thị chi tiết task */
+        } else if (strcmp(message.text, "/last") == 0) {
             memset(response, 0, sizeof(response));
-            const char *args = message.text + 7;
+            char last_json[JSON_BUFFER_SIZE];
+            action_dispatcher_get_last_json(last_json, sizeof(last_json));
+            snprintf(response, sizeof(response), "🔍 <b>Action JSON cuối cùng:</b>\n\n<code>%s</code>", last_json);
+        } else if (strcmp(message.text, "/v") == 0) {
+            snprintf(response, sizeof(response), "🏷️ **Firmware Version:** %s\n🔧 Target: ESP32-C3 Super Mini", FIRMWARE_VERSION);
+        } else if (strcmp(message.text, "/deadline") == 0) {
+            time_t now = time_utils_get_now();
+            time_t three_days = now + (3 * 24 * 60 * 60);
+            task_record_t results[5];
+            int found = 0;
+            task_database_query_by_time(now, three_days, NULL, "pending", results, 5, &found);
+            if (found > 0) {
+                int w = snprintf(response, sizeof(response), "📅 **DANH SÁCH DEADLINE (3 NGÀY)**\n");
+                for (int j = 0; j < found; j++) {
+                    char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
+                    w += snprintf(response + w, sizeof(response) - w, "\n• [#%lu] %s (%s)", (unsigned long)results[j].id, results[j].title, db);
+                }
+            } else {
+                snprintf(response, sizeof(response), "✅ Hiện không có deadline nào sắp tới.");
+            }
+        } else if (strncmp(message.text, "/t", 2) == 0 && (message.text[2] == ' ' || message.text[2] == '\0' || (message.text[2] >= '0' && message.text[2] <= '9'))) {
+            /* Lệnh /t <id1> <id2> ... - hiển thị chi tiết task */
+            memset(response, 0, sizeof(response));
+            const char *args = message.text + 2;
             /* Bỏ qua khoảng trắng đầu */
             while (*args == ' ') args++;
 
             if (strlen(args) == 0) {
                 snprintf(response, sizeof(response),
-                    "⚠️ Cú pháp: /taskid <id1> <id2> ...\n"
-                    "Ví dụ: /taskid 1 2 3\n"
-                    "Hoặc: /taskid 1,2,3");
+                    "⚠️ Cú pháp: /t <id1> <id2> ...\n"
+                    "Ví dụ: /t 1 2 3\n"
+                    "Hoặc: /t 1,2,3");
             } else {
                 int written = 0;
                 int found = 0;

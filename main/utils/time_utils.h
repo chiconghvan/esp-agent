@@ -59,6 +59,18 @@ char *time_utils_format_vietnamese(time_t timestamp, char *buffer, size_t buffer
 char *time_utils_format_date_short(time_t timestamp, char *buffer, size_t buffer_size);
 
 /**
+ * @brief Format epoch timestamp thành chuỗi ISO8601 chuẩn
+ *
+ * Ví dụ: "2026-03-15T14:30:00"
+ *
+ * @param timestamp Epoch timestamp
+ * @param buffer Buffer để ghi kết quả
+ * @param buffer_size Kích thước buffer
+ * @return char* Con trỏ đến buffer
+ */
+char *time_utils_format_iso8601(time_t timestamp, char *buffer, size_t buffer_size);
+
+/**
  * @brief Lấy time range cho "hôm nay" (00:00 → 23:59:59)
  *
  * @return time_range_t Khoảng thời gian hôm nay

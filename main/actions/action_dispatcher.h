@@ -82,6 +82,11 @@ esp_err_t action_dispatcher_handle(const char *user_message,
  */
 void dispatcher_set_context_tasks(const uint32_t *ids, int count);
 
+/**
+ * @brief Lấy JSON của action cuối cùng vừa thực hiện
+ */
+void action_dispatcher_get_last_json(char *buffer, size_t buffer_size);
+
 /* ========================= Action Handlers =============================== */
 
 esp_err_t action_create_task(const char *data_json, char *response, size_t response_size);
