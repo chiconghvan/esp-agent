@@ -5,8 +5,11 @@
  * ===========================================================================
  */
 
+#include "config.h"
 #include "ssd1306.h"
 #include "font5x7.h"
+#include "font6x8.h"
+#include "font4x6.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
 #include <string.h>
@@ -173,14 +176,93 @@ void ssd1306_draw_string(int x, int y, const char *str, bool inverted)
     while (*str) {
         if (cx + 6 > SSD1306_WIDTH) break;
         ssd1306_draw_char(cx, y, *str, inverted);
-        cx += 6;  /* 5 pixel + 1 spacing */
+        char c = *str;
+        if (c == ' ') cx += 3; 
+        else if (c == '.' || c == ',' || c == ':' || c == ';') cx += 4;
+        else cx += 6;
         str++;
     }
 }
 
 /* --------------------------------------------------------------------------
- * Vẽ chuỗi có tự động xuống dòng
+ * Vẽ ký tự 6x8 (Dày hơn)
  * -------------------------------------------------------------------------- */
+void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted)
+{
+    if (c < 32 || c > 126) c = '?';
+    int idx = c - 32;
+
+    for (int col = 0; col < 6; col++) {
+        uint8_t line = font6x8[idx][col];
+        for (int row = 0; row < 8; row++) {
+            bool pixel = (line >> row) & 1;
+            if (inverted) pixel = !pixel;
+            ssd1306_draw_pixel(x + col, y + row, pixel);
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Vẽ chuỗi font 6x8
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_string_6x8(int x, int y, const char *str, bool inverted)
+{
+    int cx = x;
+    while (*str) {
+        char c = *str;
+        int char_w = 6;
+        if (c == ' ') char_w = 3;
+        else if (c == '.' || c == ',' || c == ':' || c == ';') char_w = 4;
+        
+        if (cx + char_w > SSD1306_WIDTH) break;
+        
+        ssd1306_draw_char_6x8(cx, y, c, inverted);
+        cx += char_w;
+        str++;
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Vẽ ký tự 4x6
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_char_4x6(int x, int y, char c, bool inverted)
+{
+    if (c < 32 || c > 126) c = '?';
+    int idx = c - 32;
+
+    for (int col = 0; col < 4; col++) {
+        uint8_t line = font4x6[idx][col];
+        for (int row = 0; row < 6; row++) {
+            bool pixel = (line >> row) & 1;
+            if (inverted) pixel = !pixel;
+            ssd1306_draw_pixel(x + col, y + row, pixel);
+        }
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Vẽ chuỗi font 4x6
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_string_4x6(int x, int y, const char *str, bool inverted)
+{
+    int cx = x;
+    while (*str) {
+        if (cx + 4 > SSD1306_WIDTH) break;
+        ssd1306_draw_char_4x6(cx, y, *str, inverted);
+        if (*str == ' ') cx += 2; /* Giảm 1 nửa space (4 -> 2) */
+        else cx += 4;
+        str++;
+    }
+}
+
+/* --------------------------------------------------------------------------
+ * Vẽ thanh ngang inverted với font nhỏ 4x6
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_inverted_bar(int page_y, const char *text)
+{
+    ssd1306_fill_rect(0, page_y, SSD1306_WIDTH, 10, true);
+    ssd1306_draw_string(2, page_y + 1, text, true);
+}
 void ssd1306_draw_string_wrapped(int x, int y, int max_width, const char *str, bool inverted)
 {
     int cx = x;
@@ -244,16 +326,6 @@ void ssd1306_draw_string_wrapped(int x, int y, int max_width, const char *str, b
     }
 }
 
-/* --------------------------------------------------------------------------
- * Vẽ inverted bar (nền đen, chữ trắng, full width)
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_inverted_bar(int y, const char *text)
-{
-    /* Fill toàn bộ dòng bằng pixel sáng */
-    ssd1306_fill_rect(0, y, SSD1306_WIDTH, 10, true);
-    /* Vẽ text inverted (pixel tối trên nền sáng) */
-    ssd1306_draw_string(1, y + 1, text, true);
-}
 
 /* --------------------------------------------------------------------------
  * Vẽ đường kẻ ngang

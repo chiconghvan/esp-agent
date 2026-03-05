@@ -41,6 +41,14 @@ void ssd1306_draw_char(int x, int y, char c, bool inverted);
 void ssd1306_draw_string(int x, int y, const char *str, bool inverted);
 void ssd1306_draw_string_wrapped(int x, int y, int max_width, const char *str, bool inverted);
 
+/** Vẽ font 6x8 (cho thử nghiệm) */
+void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted);
+void ssd1306_draw_string_6x8(int x, int y, const char *str, bool inverted);
+
+/** Vẽ font 4x6 (cho thử nghiệm) */
+void ssd1306_draw_char_4x6(int x, int y, char c, bool inverted);
+void ssd1306_draw_string_4x6(int x, int y, const char *str, bool inverted);
+
 /** Vẽ thanh ngang inverted (nền đen full width, chữ trắng) */
 void ssd1306_draw_inverted_bar(int page_y, const char *text);
 
