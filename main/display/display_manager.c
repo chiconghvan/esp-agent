@@ -1,0 +1,511 @@
+/**
+ * ===========================================================================
+ * @file display_manager.c
+ * @brief State machine quản lý màn hình OLED + Carousel deadline
+ *
+ * BOOT → IDLE (carousel) ↔ RESULT / ALERT
+ * Nút BOOT (GPIO9): chuyển deadline tiếp theo (slide animation)
+ * ===========================================================================
+ */
+
+#include "display_manager.h"
+#include "ssd1306.h"
+#include "vn_utils.h"
+#include "task_database.h"
+#include "time_utils.h"
+#include "wifi_manager.h"
+#include "config.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "nvs.h"
+#include <stdio.h>
+#include <string.h>
+
+static const char *TAG = "display";
+
+/* ──── Screen states ──── */
+typedef enum {
+    SCREEN_BOOT, SCREEN_IDLE, SCREEN_RESULT, SCREEN_ALERT,
+} screen_state_t;
+
+static screen_state_t s_state = SCREEN_BOOT;
+static TickType_t s_state_start = 0;
+
+#define RESULT_TIMEOUT_MS   4000
+#define ALERT_TIMEOUT_MS    5000
+#define IDLE_REFRESH_MS     60000
+
+/* ──── Button (GPIO9 = BOOT) ──── */
+#define BOOT_BTN_GPIO       9
+#define DEBOUNCE_MS         250
+
+static volatile bool s_btn_pressed = false;
+static TickType_t s_last_btn_tick = 0;
+
+/* ──── Carousel data ──── */
+#define MAX_DL_TASKS        10
+
+typedef struct {
+    char id_str[8];        /* "#3"                   */
+    char title_l1[22];     /* Dòng 1 tiêu đề (ASCII) */
+    char title_l2[22];     /* Dòng 2 tiêu đề         */
+    char due_str[24];      /* "Han: 15:00 hom nay"   */
+} carousel_item_t;
+
+static carousel_item_t s_items[MAX_DL_TASKS];
+static int s_dl_count = 0;     /* Số deadline tasks    */
+static int s_cur_idx  = 0;     /* Index hiện tại       */
+static bool s_wifi_ok = true;
+
+/* ==========================================================================
+ * Button ISR + init
+ * ========================================================================== */
+static void IRAM_ATTR btn_isr(void *arg) { s_btn_pressed = true; }
+
+static void button_init(void)
+{
+    gpio_config_t cfg = {
+        .pin_bit_mask = (1ULL << BOOT_BTN_GPIO),
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_NEGEDGE,
+    };
+    gpio_config(&cfg);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(BOOT_BTN_GPIO, btn_isr, NULL);
+}
+
+/* ==========================================================================
+ * Init
+ * ========================================================================== */
+esp_err_t display_init(int sda_gpio, int scl_gpio)
+{
+    esp_err_t err = ssd1306_init(sda_gpio, scl_gpio);
+    if (err != ESP_OK) return err;
+    button_init();
+    s_state = SCREEN_BOOT;
+    return ESP_OK;
+}
+
+/* ==========================================================================
+ * Boot progress (không đổi)
+ * ========================================================================== */
+void display_boot_progress(int percent, const char *label)
+{
+    ssd1306_clear();
+    ssd1306_draw_string(16, 10, "ESP-Agent v1.0", false);
+    ssd1306_draw_progress(14, 30, 100, percent);
+
+    char ascii[22];
+    vn_strip_diacritics(ascii, label, sizeof(ascii));
+    int len = strlen(ascii);
+    int x = (128 - len * 6) / 2;
+    if (x < 0) x = 0;
+    ssd1306_draw_string(x, 46, ascii, false);
+    ssd1306_update();
+}
+
+/* ==========================================================================
+ * Helpers: split title, format due time
+ * ========================================================================== */
+static void split_title(const char *title, int indent, char *l1, int l1sz, char *l2, int l2sz)
+{
+    int max_l1 = 21 - indent;  /* Ký tự khả dụng trên dòng 1 sau ID prefix */
+    if (max_l1 < 5) max_l1 = 5;
+    int len = strlen(title);
+    if (len <= max_l1) {
+        strncpy(l1, title, l1sz - 1); l1[l1sz - 1] = '\0';
+        l2[0] = '\0';
+    } else {
+        int sp = max_l1;
+        while (sp > 0 && title[sp] != ' ') sp--;
+        if (sp == 0) sp = max_l1;
+        int n = sp < l1sz - 1 ? sp : l1sz - 1;
+        memcpy(l1, title, n); l1[n] = '\0';
+        const char *rest = title + sp;
+        while (*rest == ' ') rest++;
+        int rest_len = strlen(rest);
+        if (rest_len <= 21) {
+            strncpy(l2, rest, l2sz - 1); l2[l2sz - 1] = '\0';
+        } else {
+            /* Cắt dòng 2 và thêm "..." */
+            int cut = 18; /* 18 chars + "..." = 21 */
+            if (cut >= l2sz - 4) cut = l2sz - 4;
+            while (cut > 0 && rest[cut] != ' ') cut--;
+            if (cut == 0) cut = 18;
+            memcpy(l2, rest, cut);
+            l2[cut] = '\0';
+            strncat(l2, "...", l2sz - strlen(l2) - 1);
+        }
+    }
+}
+
+static void format_due(time_t due, char *buf, size_t sz)
+{
+    if (due <= 0) { snprintf(buf, sz, "Han: --"); return; }
+    struct tm ti; localtime_r(&due, &ti);
+    time_t now = time_utils_get_now();
+    struct tm nt; localtime_r(&now, &nt);
+    nt.tm_hour = 0; nt.tm_min = 0; nt.tm_sec = 0;
+    time_t t0 = mktime(&nt);
+
+    if (due < t0 + 86400)
+        snprintf(buf, sz, "Han: %02d:%02d hom nay", ti.tm_hour, ti.tm_min);
+    else if (due < t0 + 2*86400)
+        snprintf(buf, sz, "Han: %02d:%02d ngay mai", ti.tm_hour, ti.tm_min);
+    else
+        snprintf(buf, sz, "Han: %02d:%02d %02d/%02d",
+                 ti.tm_hour, ti.tm_min, ti.tm_mday, ti.tm_mon + 1);
+}
+
+/* ==========================================================================
+ * Refresh idle data – lưu TẤT CẢ deadline tasks cho carousel
+ * ========================================================================== */
+static void refresh_idle_data(void)
+{
+    time_t now = time_utils_get_now();
+    struct tm ti_now; localtime_r(&now, &ti_now);
+    ti_now.tm_hour = 0; ti_now.tm_min = 0; ti_now.tm_sec = 0;
+    time_t today_start = mktime(&ti_now);
+    time_t dl_end = today_start + (3 * 86400);
+
+    static task_record_t tasks[MAX_DL_TASKS];
+    int count = 0;
+
+    if (task_database_query_by_time(today_start, dl_end, NULL, "pending",
+                                    tasks, MAX_DL_TASKS, &count) == ESP_OK && count > 0) {
+        /* Sort theo due_time tăng dần */
+        for (int i = 0; i < count - 1; i++)
+            for (int j = 0; j < count - i - 1; j++)
+                if (tasks[j].due_time > tasks[j+1].due_time) {
+                    task_record_t tmp = tasks[j];
+                    tasks[j] = tasks[j+1]; tasks[j+1] = tmp;
+                }
+
+        s_dl_count = count;
+        for (int i = 0; i < count; i++) {
+            snprintf(s_items[i].id_str, sizeof(s_items[i].id_str),
+                     "#%lu", (unsigned long)tasks[i].id);
+            char ascii[64];
+            vn_strip_diacritics(ascii, tasks[i].title, sizeof(ascii));
+            int id_indent = strlen(s_items[i].id_str) + 1; /* +1 cho dấu cách */
+            split_title(ascii, id_indent,
+                        s_items[i].title_l1, sizeof(s_items[i].title_l1),
+                        s_items[i].title_l2, sizeof(s_items[i].title_l2));
+            format_due(tasks[i].due_time, s_items[i].due_str, sizeof(s_items[i].due_str));
+        }
+        if (s_cur_idx >= count) s_cur_idx = 0;
+    } else {
+        s_dl_count = 0;
+        s_cur_idx  = 0;
+    }
+}
+
+/* ==========================================================================
+ * Draw helpers
+ * ========================================================================== */
+static void draw_header(void)
+{
+    char hdr[48];
+    const char *sts = s_wifi_ok ? "Sts:OK" : "Sts:X";
+    snprintf(hdr, sizeof(hdr), " Nhac lich     %s", sts);
+    ssd1306_draw_inverted_bar(0, hdr);
+}
+
+static void draw_dl_count(void)
+{
+    char line[32];
+    snprintf(line, sizeof(line), "Deadline: %d", s_dl_count);
+    ssd1306_draw_string(2, 13, line, false);
+    /* Đường gạch ngang phân cách */
+    ssd1306_draw_hline(0, 23, 128);
+}
+
+/** Vẽ nội dung 1 task tại x_offset (dùng cho animation) */
+static void draw_task_content(int idx, int xoff)
+{
+    if (idx < 0 || idx >= s_dl_count) return;
+    const carousel_item_t *it = &s_items[idx];
+
+    /* #ID + Title line 1 */
+    char combined[44];
+    snprintf(combined, sizeof(combined), "%s %s", it->id_str, it->title_l1);
+    ssd1306_draw_string(xoff, 28, combined, false);
+
+    /* Title line 2 */
+    if (it->title_l2[0])
+        ssd1306_draw_string(xoff, 39, it->title_l2, false);
+
+    /* Due time */
+    ssd1306_draw_string(xoff, 50, it->due_str, false);
+}
+
+/** Vẽ chấm chỉ thị vị trí carousel */
+static void draw_dots(int cur, int total)
+{
+    if (total <= 1) return;
+    int sp = 10;  /* khoảng cách giữa các tâm chấm */
+    int tw = (total - 1) * sp;
+    int sx = (128 - tw) / 2;
+    int cy = 61; /* Dịch xuống sát đáy hơn tí */
+
+    for (int i = 0; i < total; i++) {
+        int cx = sx + i * sp;
+        if (i == cur) {
+            /* Chấm lớn 3×3 (active) */
+            ssd1306_fill_rect(cx - 1, cy - 1, 3, 3, true);
+        } else {
+            /* Chấm nhỏ 1×1 (inactive) */
+            ssd1306_draw_pixel(cx, cy, true);
+        }
+    }
+}
+
+/* ==========================================================================
+ * Render idle (không animation)
+ * ========================================================================== */
+static void render_idle(void)
+{
+    ssd1306_clear();
+    draw_header();
+    draw_dl_count();
+
+    if (s_dl_count > 0) {
+        draw_task_content(s_cur_idx, 2);
+        draw_dots(s_cur_idx, s_dl_count);
+    } else {
+        ssd1306_draw_string(2, 30, "Khong co task gap", false);
+    }
+    ssd1306_update();
+}
+
+/* ==========================================================================
+ * Slide animation: trượt từ phải sang trái
+ * ========================================================================== */
+static void slide_to_next(void)
+{
+    if (s_dl_count <= 1) return;
+
+    int old_idx = s_cur_idx;
+    int new_idx = (s_cur_idx + 1) % s_dl_count;
+
+    #define ANIM_STEPS  6
+    #define ANIM_DELAY  25   /* ms mỗi frame */
+
+    for (int step = 1; step <= ANIM_STEPS; step++) {
+        int shift = (step * 128) / ANIM_STEPS;
+
+        ssd1306_clear();
+        draw_header();
+        draw_dl_count();
+
+        /* Nội dung cũ trượt ra trái */
+        draw_task_content(old_idx, 2 - shift);
+        /* Nội dung mới trượt vào từ phải */
+        draw_task_content(new_idx, 130 - shift);
+
+        draw_dots(new_idx, s_dl_count);
+        ssd1306_update();
+        vTaskDelay(pdMS_TO_TICKS(ANIM_DELAY));
+    }
+
+    s_cur_idx = new_idx;
+    render_idle();  /* Vẽ lại sạch sau animation */
+}
+
+/* ==========================================================================
+ * Show Result (không đổi)
+ * ========================================================================== */
+void display_show_result(const char *action, uint32_t task_id, const char *title)
+{
+    ssd1306_clear();
+    char header[48];
+    if (action) {
+        char aa[22]; vn_strip_diacritics(aa, action, sizeof(aa));
+        snprintf(header, sizeof(header), " %s!", aa);
+    } else {
+        snprintf(header, sizeof(header), " Hoan thanh!");
+    }
+    ssd1306_draw_inverted_bar(0, header);
+
+    if (task_id > 0) {
+        char d[64]; char aa2[22] = "";
+        if (action) vn_strip_diacritics(aa2, action, sizeof(aa2));
+        snprintf(d, sizeof(d), "%s #%lu",
+            strlen(aa2) > 0 ? aa2 : "Task", (unsigned long)task_id);
+        ssd1306_draw_string(2, 20, d, false);
+    }
+    if (title && strlen(title) > 0) {
+        char at[128]; vn_strip_diacritics(at, title, sizeof(at));
+        ssd1306_draw_string_wrapped(2, 34, 126, at, false);
+    }
+    ssd1306_update();
+    s_state = SCREEN_RESULT;
+    s_state_start = xTaskGetTickCount();
+}
+
+/* ==========================================================================
+ * Show Alert (không đổi)
+ * ========================================================================== */
+void display_show_alert(uint32_t task_id, const char *title,
+                        const char *due_str, int days_left)
+{
+    ssd1306_clear();
+
+    /* Header inverted bar - SAP DEN HAN! */
+    ssd1306_draw_inverted_bar(0, " !! SAP DEN HAN !!");
+
+    /* Chuẩn bị dữ liệu title giống Idle (2 dòng, có dấu ...) */
+    char id_str[10];
+    snprintf(id_str, sizeof(id_str), "#%lu", (unsigned long)task_id);
+    int id_indent = strlen(id_str) + 1;
+
+    char ascii_title[64];
+    vn_strip_diacritics(ascii_title, title, sizeof(ascii_title));
+
+    char l1[24], l2[24];
+    split_title(ascii_title, id_indent, l1, sizeof(l1), l2, sizeof(l2));
+
+    /* Vẽ Task ID + Title dòng 1 */
+    char combined[48];
+    snprintf(combined, sizeof(combined), "%s %s", id_str, l1);
+    ssd1306_draw_string(2, 13, combined, false);
+
+    /* Title dòng 2 */
+    if (l2[0]) {
+        ssd1306_draw_string(2, 23, l2, false);
+    }
+
+    /* Gạch ngang phân cách */
+    ssd1306_draw_hline(0, 34, 128);
+
+    /* Thời hạn */
+    char due_line[64];
+    snprintf(due_line, sizeof(due_line), "Han: %s", due_str ? due_str : "??");
+    ssd1306_draw_string(2, 40, due_line, false);
+
+    /* Số ngày còn lại */
+    char status_line[64];
+    if (days_left <= 0) {
+        snprintf(status_line, sizeof(status_line), "DA QUA HAN!");
+    } else if (days_left == 1) {
+        snprintf(status_line, sizeof(status_line), "Con 1 ngay");
+    } else {
+        snprintf(status_line, sizeof(status_line), "Con %d ngay", days_left);
+    }
+    ssd1306_draw_string(2, 52, status_line, false);
+
+    ssd1306_update();
+
+    /* Flash effect: nhấp nháy 3 lần */
+    for (int i = 0; i < 3; i++) {
+        vTaskDelay(pdMS_TO_TICKS(300));
+        ssd1306_invert_display(true);
+        vTaskDelay(pdMS_TO_TICKS(300));
+        ssd1306_invert_display(false);
+    }
+
+    s_state = SCREEN_ALERT;
+    s_state_start = xTaskGetTickCount();
+}
+
+/* ==========================================================================
+ * Show Idle
+ * ========================================================================== */
+void display_show_idle(void)
+{
+    refresh_idle_data();
+    render_idle();
+    s_state = SCREEN_IDLE;
+    s_state_start = xTaskGetTickCount();
+}
+
+/* ==========================================================================
+ * Background task: timeout + button + refresh
+ * ========================================================================== */
+static void display_task(void *arg)
+{
+    TickType_t last_idle_refresh = 0;
+
+    while (1) {
+        s_wifi_ok = wifi_manager_is_connected();
+        TickType_t now = xTaskGetTickCount();
+        uint32_t elapsed = (now - s_state_start) * portTICK_PERIOD_MS;
+
+        /* ── Xử lý nút BOOT ── */
+        if (s_btn_pressed) {
+            s_btn_pressed = false;
+            
+            TickType_t press_start = now;
+            bool long_pressed = false;
+
+            /* Check long press >= 5s */
+            while (gpio_get_level(BOOT_BTN_GPIO) == 0) {
+                if ((xTaskGetTickCount() - press_start) * portTICK_PERIOD_MS >= 5000) {
+                    long_pressed = true;
+                    ESP_LOGW(TAG, "Đã giữ nút 5s! Xóa cài đặt WiFi...");
+                    ssd1306_clear();
+                    ssd1306_draw_string(5, 30, "XOA WIFI... REBOOT", false);
+                    ssd1306_update();
+                    
+                    nvs_handle_t h;
+                    if (nvs_open("wifi_cfg", NVS_READWRITE, &h) == ESP_OK) {
+                        nvs_erase_all(h);
+                        nvs_commit(h);
+                        nvs_close(h);
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    esp_restart();
+                }
+                vTaskDelay(pdMS_TO_TICKS(50));
+            }
+
+            if (!long_pressed && (now - s_last_btn_tick) * portTICK_PERIOD_MS >= DEBOUNCE_MS) {
+                s_last_btn_tick = now;
+                if (s_state == SCREEN_IDLE && s_dl_count > 1) {
+                    ESP_LOGI(TAG, "Button → slide %d→%d",
+                             s_cur_idx, (s_cur_idx + 1) % s_dl_count);
+                    slide_to_next();
+                }
+            }
+        }
+
+        /* ── State machine ── */
+        switch (s_state) {
+            case SCREEN_RESULT:
+                if (elapsed >= RESULT_TIMEOUT_MS) {
+                    ESP_LOGI(TAG, "Result timeout → Idle");
+                    display_show_idle();
+                }
+                break;
+            case SCREEN_ALERT:
+                if (elapsed >= ALERT_TIMEOUT_MS) {
+                    ESP_LOGI(TAG, "Alert timeout → Idle");
+                    display_show_idle();
+                }
+                break;
+            case SCREEN_IDLE:
+                if ((now - last_idle_refresh) * portTICK_PERIOD_MS >= IDLE_REFRESH_MS) {
+                    refresh_idle_data();
+                    render_idle();
+                    last_idle_refresh = now;
+                }
+                break;
+            case SCREEN_BOOT:
+                break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));  /* 100ms để nút phản hồi nhanh */
+    }
+}
+
+void display_start_task(void)
+{
+    xTaskCreate(display_task, "display", 6144, NULL, 3, NULL);
+    ESP_LOGI(TAG, "Display task started");
+}

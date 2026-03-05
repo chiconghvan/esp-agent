@@ -1,0 +1,218 @@
+Bạn là một senior embedded firmware engineer chuyên ESP-IDF.
+Hãy xây dựng một project ESP-IDF hoàn chỉnh cho ESP32-C3 Super Mini với yêu cầu dưới đây.
+Không dùng Arduino. Chỉ dùng ESP-IDF chính thống.
+Code phải production-ready, module hóa, sạch sẽ, có cấu trúc rõ ràng.
+ Hãy tạo project trên ý tưởng sau:
+Tên Project: Trợ lý nhắc việc sử dụng LLM với giao tiếp qua tin nhắn telegram bot.
+Thiết bị sử dụng: ESP32 C3 supermini
+Tính năng chính: Người dùng input dữ liệu sự kiện, nhắc việc, nhắc hẹn báo cáo, nhắc hẹn định kì qua tin nhắn với ngôn ngữ tự nhiên qua tin nhắn telegram, Project sử dụng OpenAI API responeses parse ra dữ liệu theo format database, sử dụng OpenAI embeding API để tạo dữ liệu vector 384 chiều đối với tiêu đề của task để sau này tìm kiếm dễ dàng. Các câu hỏi mà tôi có thể truy vấn là:
+"Ngày mai tôi có lịch gì?"
+"Tuần này có lịch nào không?"
+"Có báo cáo nào đến hạn không?"
+"Thời hạn của báo cáo tổng kết quý 1?"
+"Tôi đã hoàn thành báo cáo quý 1"
+Tạo lịch hẹn / nhắc việc mới
+Nhắc lại nếu chưa hoàn thành
+thay đổi trạng thái done task khi hoàn thành.
+Thì project cần trả lời chính xác theo câu hỏi của tôi.
+Ý tưởng workflow:
+Với mỗi tin nhắn tôi nhắn vào bot tele: Có 7 action cốt lõi
+🟢 1️⃣ CREATE_TASK 
+Tạo task mới.
+Ví dụ:
+"Nhắc tôi nộp báo cáo quý 1 vào 31/3"
+"Thêm lịch họp thứ 6 tuần này"
+
+🔵 2️⃣ QUERY_BY_TIME_RANGE
+Hỏi lịch theo khoảng thời gian.
+Bao gồm:
+Ngày mai
+Tuần này
+Tháng này
+Hôm nay
+Ví dụ:
+"Ngày mai có gì?"
+"Tuần này có lịch nào không?"
+ESP32 chỉ filter theo time range.
+🟣 3️⃣ QUERY_BY_TYPE
+Hỏi theo loại task.
+Ví dụ:
+"Có báo cáo nào đến hạn không?"
+"Có công việc nào pending?"
+Filter theo:
+type
+status
+due_time
+🟡 4️⃣ QUERY_SEMANTIC
+Tìm task theo nghĩa.
+Ví dụ:
+"Thời hạn báo cáo quý 1?"
+"Lịch công tác Hà Nội khi nào?"
+Dùng embedding search.
+🟠 5️⃣ COMPLETE_TASK
+Đánh dấu hoàn thành.
+Ví dụ:
+"Tôi đã hoàn thành báo cáo quý 1"
+"Xong việc họp phòng kế toán"
+Update:
+status = done
+completed_at = now
+Nếu repeat → tạo bản tiếp theo.
+🔴 6️⃣ DELETE_TASK
+Xóa task.
+Ví dụ:
+"Hủy lịch họp ngày mai"
+"Xóa báo cáo quý 1"
+Có thể:
+Hard delete
+Hoặc set status = cancelled
+🟤 7️⃣ UPDATE_TASK
+Sửa task.
+Ví dụ:
+"Dời lịch họp sang thứ 7"
+"Báo cáo quý 1 đổi hạn sang 2/4"
+Update:
+start_time
+due_time
+reminder
+
+Sử dụng LLM để phân loại tin nhắn do tôi nhập vào bot thành các action trên. Sau khi phân loại ra action, bạn hãy tự đề xuất các xử lý tìm kiếm trên hệ thống databasse mà ít sử dụng LLM nhất (tìm kiếm sử dụng vector embaed đã lưu đối với từng task).
+
+Dự vào ý tưởng của tôi đã nêu. Hãy lập kế hoạch xây dựng project để tôi phê duyệt trước khi xây dựng code của project, trong đó nêu rõ:
+- Đề xuất cấu trúc dữ liệu database phù hợp với thiết bị phần cứng. 
+- Đề xuất workflow logic đối với từng action sao cho tận dụng phần cứng tối đa, ít sử dụng LLM nhất nhưng câu trả lời vẫn hết sức tự nhiên giống như một thư ký con người.
+- Số lượng task dự kiến khoảng 200-300 task trong dữ liệu thôi.
+-Yêu cầu bắt buộc có file config.h để tôi input các config như API key, wifi ssid, password...
+- Yêu cầu phong cách Code sạch; Comment rõ ràng; Phân tầng rõ ràng; Dễ mở rộng thêm LLM trong tương lai; Không viết tắt khó hiểu
+
+Hãy bắt đầu bằng việc tạo plan 
+
+
+       
+ Nhắc lịch  Stauts ✓       | <- Nền đen chữ trắng
+----------------------------         
+ Deadline: 3               |
+ Next Task: 16:00 hôm nay  |
+ Báo cáo TĐKT              | <- Nền trắng chữ đen
+       
+
+
+
+Big Update Project:
+Hãy lên kế hoạch thực hiện Big update cơ chế xử lý yêu cầu của người dùng bằng việc thay đổi prompt và cơ chế logic từng action:
+Sau khi nhận request từ người dùng 
+- B1: Gọi AI xác định action người dùng muốn thực hiện: Nằm 1 trong 12 action sau:
+1️⃣ CREATE_TASK
+Tạo task mới trong database.
+Hành vi:
+Insert record mới
+Sinh vector embedding cho title
+2️⃣ UPDATE_TASK
+Chỉnh sửa nội dung task.
+Có thể thay đổi:
+title
+type
+due_date
+reminder_time
+repeat
+other
+Ví dụ:
+“Đổi thời hạn báo cáo quý 4 sang 30/12”
+“Sửa tên task họp cổ đông”
+“Đổi nhắc nhở sang 8 giờ sáng”
+👉 Không dùng cho hoàn thành / huỷ.
+3️⃣ COMPLETE_TASK
+Đánh dấu task đã hoàn thành.
+Ví dụ:
+“Hoàn thành báo cáo quý 4”
+“Mark task họp là xong”
+👉 Logic: update trạng thái completed = true
+4️⃣ CANCEL_TASK
+Huỷ task (không xoá khỏi database).
+Ví dụ:
+“Huỷ sự kiện họp tuần sau”
+“Bỏ task báo cáo tháng này”
+👉 Logic: update status = cancelled
+5️⃣ DELETE_TASK
+Xoá hẳn task khỏi database.
+Ví dụ:
+“Xoá báo cáo quý 4”
+“Delete task họp cổ đông”
+👉 Logic: remove record + remove vector embedding
+6️⃣ COUNT_TASKS
+Hỏi số lượng task theo điều kiện.
+Ví dụ:
+“Có bao nhiêu báo cáo tháng này?”
+7️⃣ GET_TASK_TIME
+Hỏi thời gian của 1 task cụ thể.
+Ví dụ:
+“Báo cáo quý 4 khi nào?”
+“Thời hạn của báo cáo tổng kết quý 4 là bao giờ?”
+👉 Luồng xử lý:
+Semantic search để xác định task
+Trả due_date hoặc reminder_time
+limit = 1
+8️⃣ GET_TASK_DETAIL
+Hỏi chi tiết 1 task cụ thể.
+Ví dụ:
+“Chi tiết báo cáo quý 4”
+“Thông tin sự kiện họp cổ đông”
+👉 Luôn cần semantic search để xác định task.
+9️⃣ SEARCH_TASK_BY_SEMANTIC
+User chỉ nhập nội dung liên quan đến title để tìm task.
+Ví dụ:
+“báo cáo tổng kết quý 4”
+“họp cổ đông”
+👉 Không có động từ hành động
+👉 Không hỏi thời gian
+👉 Không hỏi số lượng
+👉 Không hỏi chi tiết
+→ Trả danh sách task matching vector similarity.
+🔟 LIST_BY_REPEAT
+Hỏi các task lặp lại.
+Ví dụ:
+“Task định kỳ”
+“Báo cáo hàng tháng”
+1️⃣1️⃣ LIST_BY_TIME_RANGE
+Hỏi task trong khoảng thời gian cụ thể.
+Ví dụ:
+“Task từ tháng 1 đến tháng 3”
+“Báo cáo trong quý 2”
+1️⃣2️⃣ NEXT_UPCOMING
+Hỏi task sắp tới nhất.
+Ví dụ:
+“Task tiếp theo là gì?”
+“Sự kiện gần nhất?”
+→ due_date > now
+→ sort asc
+→ limit 1
+1️⃣3️⃣ OVERDUE_TASKS
+Hỏi task quá hạn.
+Ví dụ:
+“Task nào quá hạn?”
+“Có báo cáo nào trễ không?”
+→ due_date < now
+
+Ngoài ra, hãy tự đánh giá về 13 task trên về sự cần thiết, trùng lặp trong nhận diện, thao tác để đề xuất phương án giải quyết
+Yêu cầu Json trả về đúng định dạng 
+{
+  "intent": "GET_TASK_TIME",
+  "confidence": 0.93
+}
+- B2: Query Parser (chỉ chạy khi intent rõ ràng)
+Mỗi intent có JSON schema khác nhau.
+Sau khi có intent, hãy tiếp tục đưa intent và request của user vào prompt mới để phân tích yêu cầu của user
+Đầu tiên cần phân tích xem request của user có bao nhiêu điều kiện lọc, ví dụ: input là “Tôi có những task báo cáo lặp lại hàng tháng nào” thì hệ thống cần phải query type=report, time=trong tuần này, status=pending
+yêu cầu json trả về có định dạng 
+{
+  "field_count": number,
+  "filters": [ 
+    {
+        "field": "field_name; id, type, title, status, due_time, start_time, reminder, repeat, repeat_interval, notes",
+        "operator": "equals | contains | before | after | between | in | is_not_null | is_null |...",
+        "value": value,
+        "confidence": 0.0-1.0 <nếu confidence < 0.8 thì hỏi lại user>
+    }
+  ]          <- tự đề xuất các trường thông tin, sửa đổi đối với từng phần tử của mảng filters 
+}
+Sử dụng tìm kiếm vector đối với các trường hợp request có nội dung cụ thể liên quan đến tiêu đề, nội dung một cách cụ thể thì sử dụng tìm kiếm vector trong các vector đã lưu, nếu có nhiều vector có ngữ nghĩa tương đồng (confidence gần bằng nhau với request thì liệt kê tất ra cho user xem.

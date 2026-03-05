@@ -1,0 +1,20 @@
+# ESP-IDF specific
+build/
+main/config.h
+managed_components/
+sdkconfig
+sdkconfig.old
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.env
+
+# System/IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.bak

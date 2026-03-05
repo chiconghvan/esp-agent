@@ -1,0 +1,192 @@
+/**
+ * ===========================================================================
+ * @file action_delete.c
+ * @brief Handler cho action DELETE_TASK
+ *
+ * Hỗ trợ 2 chế độ:
+ *   - soft: set status = cancelled (hủy, bỏ)
+ *   - hard: xóa file + index + embedding (xóa hẳn, delete)
+ * ===========================================================================
+ */
+
+#include "action_dispatcher.h"
+#include "task_database.h"
+#include "vector_search.h"
+#include "openai_client.h"
+#include "json_parser.h"
+#include "response_formatter.h"
+#include "config.h"
+#include "time_utils.h"
+#include "display_manager.h"
+#include <string.h>
+#include <stdio.h>
+#include <inttypes.h>
+#include "esp_log.h"
+#include "cJSON.h"
+#include "telegram_bot.h"
+
+static const char *TAG = "action_delete";
+
+/* Bộ nhớ đệm lưu ID các task đang chờ xác nhận xóa vĩnh viễn */
+static uint32_t s_pending_deletes[20];
+static int s_pending_count = 0;
+
+esp_err_t action_delete_task(const char *data_json, char *response, size_t response_size)
+{
+    if (data_json == NULL) {
+        format_not_found("để xóa", response, response_size);
+        return ESP_FAIL;
+    }
+
+    cJSON *data = json_parse_string(data_json);
+    if (data == NULL) {
+        format_error("Lỗi xử lý dữ liệu", response, response_size);
+        return ESP_FAIL;
+    }
+
+    const char *search_query = json_get_string(data, "search_query", "");
+    const char *delete_mode = json_get_string(data, "delete_mode", "soft");
+
+    uint32_t explicit_task_ids[20];
+    int explicit_count = 0;
+    cJSON *task_ids_json = cJSON_GetObjectItem(data, "task_ids");
+    if (task_ids_json != NULL && cJSON_IsArray(task_ids_json)) {
+        cJSON *item;
+        cJSON_ArrayForEach(item, task_ids_json) {
+            if (cJSON_IsNumber(item) && explicit_count < 20) {
+                explicit_task_ids[explicit_count++] = (uint32_t)item->valuedouble;
+            }
+        }
+    }
+
+    char query_buf[256];
+    strncpy(query_buf, search_query, sizeof(query_buf) - 1);
+    query_buf[sizeof(query_buf) - 1] = '\0';
+
+    bool is_hard = (strcmp(delete_mode, "hard") == 0);
+    cJSON_Delete(data);
+
+    if (is_hard) {
+        /* Chế độ CHẶN: Lưu vào danh sách chờ và yêu cầu /confirm */
+        s_pending_count = 0; // Reset danh sách cũ
+
+        if (explicit_count > 0) {
+            int written = snprintf(response, response_size, 
+                "⚠️ **XÁC NHẬN XÓA VĨNH VIỄN**\n"
+                "Danh sách %d task chờ xóa:\n", explicit_count);
+            
+            for (int i = 0; i < explicit_count; i++) {
+                task_record_t t;
+                if (task_database_read(explicit_task_ids[i], &t) == ESP_OK) {
+                    s_pending_deletes[s_pending_count++] = explicit_task_ids[i];
+                    written += snprintf(response + written, response_size - written,
+                        " - [#%" PRIu32 "] %s\n", t.id, t.title);
+                }
+            }
+            snprintf(response + written, response_size - written, 
+                "\n👉 Gõ hoặc bấm `/confirm` để xóa sạch các task trên.");
+            return ESP_OK;
+        } else {
+            /* Tìm kiếm semantic */
+            float query_embedding[EMBEDDING_DIM];
+            if (openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM) != ESP_OK) {
+                format_error("Lỗi AI", response, response_size);
+                return ESP_FAIL;
+            }
+            search_result_t res[1];
+            int f = 0;
+            vector_search_find_similar(query_embedding, res, 1, &f);
+            if (f == 0) {
+                format_not_found(query_buf, response, response_size);
+                return ESP_OK;
+            }
+            task_record_t t;
+            task_database_read(res[0].task_id, &t);
+            s_pending_deletes[s_pending_count++] = t.id;
+            
+            snprintf(response, response_size,
+                "⚠️ **XÁC NHẬN XÓA VĨNH VIỄN**\n"
+                "Task: [#%" PRIu32 "] %s\n\n"
+                "👉 Gõ hoặc bấm `/confirm` để xác nhận xóa.",
+                t.id, t.title);
+            return ESP_OK;
+        }
+    }
+
+    /* Logic Xóa mềm (Hủy) - Thực hiện ngay */
+    if (explicit_count > 0) {
+        int deleted_count = 0;
+        int written = snprintf(response, response_size, "🚫 Đã hủy %d công việc:\n", explicit_count);
+
+        for (int i = 0; i < explicit_count; i++) {
+            task_record_t task;
+            if (task_database_read(explicit_task_ids[i], &task) == ESP_OK) {
+                if (task_database_soft_delete(explicit_task_ids[i]) == ESP_OK) {
+                    written += snprintf(response + written, response_size - written,
+                        " - [#%" PRIu32 "] %s\n", task.id, task.title);
+                    deleted_count++;
+                }
+            }
+        }
+        if (deleted_count == 0) format_not_found("theo ID", response, response_size);
+        return ESP_OK;
+    } else {
+        if (strlen(query_buf) == 0) {
+            format_not_found("(không có mô tả)", response, response_size);
+            return ESP_FAIL;
+        }
+        float query_embedding[EMBEDDING_DIM];
+        openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
+        search_result_t res[1];
+        int f = 0;
+        vector_search_find_similar(query_embedding, res, 1, &f);
+        if (f == 0) {
+            format_not_found(query_buf, response, response_size);
+            return ESP_OK;
+        }
+        uint32_t target_id = res[0].task_id;
+        task_record_t task;
+        task_database_read(target_id, &task);
+        task_database_soft_delete(target_id);
+        snprintf(response, response_size, "🚫 Đã hủy task #%" PRIu32 ": %s", target_id, task.title);
+        display_show_result("Huy task", target_id, task.title);
+        return ESP_OK;
+    }
+}
+
+/* Hàm phụ để dispatcher gọi thực thi lệnh /confirm */
+esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
+{
+    if (s_pending_count == 0) {
+        snprintf(response, response_size, "ℹ️ Không có lệnh xóa nào đang chờ xác nhận.");
+        return ESP_OK;
+    }
+
+    int success_count = 0;
+    int written = snprintf(response, response_size, "🗑️ **ĐÃ XÓA VĨNH VIỄN**\n───────────────\n");
+
+    for (int i = 0; i < s_pending_count; i++) {
+        uint32_t id = s_pending_deletes[i];
+        task_record_t t;
+        if (task_database_read(id, &t) == ESP_OK) {
+            char title_tmp[64];
+            strncpy(title_tmp, t.title, 63); title_tmp[63] = "\0";
+
+            if (task_database_hard_delete(id) == ESP_OK) {
+                vector_search_delete(id);
+                written += snprintf(response + written, response_size - written, "✅ #%" PRIu32 ": %s\n", id, title_tmp);
+                success_count++;
+            }
+        }
+    }
+
+    if (success_count > 0) {
+        snprintf(response + written, response_size - written, "───────────────\n🚀 Thành công %d task.", success_count);
+        display_show_result("Xoa xong", success_count, "tasks");
+    } else {
+        snprintf(response, response_size, "❌ Không thể thực hiện xóa. Có lỗi xảy ra.");
+    }
+
+    s_pending_count = 0; // Xóa sạch hàng đợi sau khi dùng
+    return ESP_OK;
+}
