@@ -1,4 +1,4 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh v1.1.3
+# ESP-Agent: Trợ lý nhắc việc thông minh v1.1.4
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306.
 

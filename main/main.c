@@ -33,6 +33,7 @@
 #include "time_utils.h"
 #include "display_manager.h"
 #include "esp_ota_ops.h"
+#include "driver/gpio.h"
 #include <stdlib.h>
 
 static const char *TAG = "esp_agent";
@@ -84,8 +85,12 @@ static void telegram_polling_loop(void)
     char response[TELEGRAM_MSG_BUFFER_SIZE];
 
     while (1) {
+        /* Cập nhật đèn LED trạng thái (Sáng khi WiFi OK) */
+        bool ready = wifi_manager_is_connected();
+        gpio_set_level(SYSTEM_LED_GPIO, ready ? 0 : 1); // 0 = ON (Active Low)
+
         /* Kiểm tra WiFi */
-        if (!wifi_manager_is_connected()) {
+        if (!ready) {
             ESP_LOGW(TAG, "WiFi mất kết nối, chờ...");
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
@@ -218,10 +223,27 @@ static void telegram_polling_loop(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Khởi tạo LED hệ thống
+ * -------------------------------------------------------------------------- */
+static void init_system_led(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << SYSTEM_LED_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+    gpio_set_level(SYSTEM_LED_GPIO, 1); // Mặc định tắt (High)
+}
+
+/* --------------------------------------------------------------------------
  * Entry Point: app_main
  * -------------------------------------------------------------------------- */
 void app_main(void)
 {
+    init_system_led();
     print_banner();
 
     /* Khởi tạo màn hình OLED (sớm nhất để show boot progress) */
@@ -303,15 +325,12 @@ void app_main(void)
     display_show_idle();
     display_start_task();
 
-    /* Gửi thông báo Telegram khởi động thành công */
-    telegram_bot_send_default(
-        "\xF0\x9F\x9F\xA2 ESP-Agent đã sẵn sàng!\n"
-        "Gửi tin nhắn để tôi giúp bạn quản lý công việc.\n\n"
-        "\xF0\x9F\x92\xA1 Ví dụ:\n"
-        "\xE2\x80\xA2 \"Nhắc tôi nộp báo cáo quý 1 vào 31/3\"\n"
-        "\xE2\x80\xA2 \"Ngày mai có gì?\"\n"
-        "\xE2\x80\xA2 \"Có báo cáo nào đến hạn không?\"\n"
-        "\xE2\x80\xA2 \"Tôi đã hoàn thành báo cáo quý 1\"");
+    /* Đã sẵn sàng -> Bật LED (0 = ON cho ESP32-C3 Super Mini) */
+    if (wifi_manager_is_connected()) {
+        gpio_set_level(SYSTEM_LED_GPIO, 0);
+    }
+
+    /* Bỏ qua gửi thông báo Telegram khởi động để tránh làm phiền */
 
     /* Main loop: Telegram long polling */
     telegram_polling_loop();
