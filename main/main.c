@@ -313,10 +313,6 @@ void app_main(void)
         "\xE2\x80\xA2 \"Có báo cáo nào đến hạn không?\"\n"
         "\xE2\x80\xA2 \"Tôi đã hoàn thành báo cáo quý 1\"");
 
-    /* Đánh dấu Firmware này là hợp lệ (Hủy rollback) */
-    ESP_LOGI(TAG, "Đánh dấu firmware hợp lệ, kết thúc OTA boot.");
-    esp_ota_mark_app_valid_cancel_rollback();
-
     /* Main loop: Telegram long polling */
     telegram_polling_loop();
 }

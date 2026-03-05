@@ -98,7 +98,9 @@ esp_err_t display_init(int sda_gpio, int scl_gpio)
 void display_boot_progress(int percent, const char *label)
 {
     ssd1306_clear();
-    ssd1306_draw_string(16, 10, "ESP-Agent v1.0", false);
+    char ver_text[32];
+    snprintf(ver_text, sizeof(ver_text), "ESP-Agent %s", FIRMWARE_VERSION);
+    ssd1306_draw_string(16, 10, ver_text, false);
     ssd1306_draw_progress(14, 30, 100, percent);
 
     char ascii[22];
