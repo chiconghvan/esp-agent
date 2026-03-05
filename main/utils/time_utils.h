@@ -99,6 +99,13 @@ time_range_t time_utils_get_this_week_range(void);
 time_range_t time_utils_get_this_month_range(void);
 
 /**
+ * @brief Lấy time range cho 3 ngày (Hôm nay, Ngày mai, Ngày kia)
+ *
+ * @return time_range_t Từ 00:00 hôm nay đến 23:59 ngày kia
+ */
+time_range_t time_utils_get_three_day_range(void);
+
+/**
  * @brief Lấy thời gian hiện tại (epoch)
  *
  * @return time_t Thời gian hiện tại

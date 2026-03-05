@@ -58,10 +58,10 @@ static void reminder_task(void *arg)
             }
         }
 
-        /* === Phần 2: Cảnh báo sắp đến hạn (trong 3 ngày) === */
+        /* === Phần 2: Cảnh báo sắp đến hạn (Hôm nay - Mai - Kia) === */
         int approaching_count = 0;
-        time_t three_days_later = now + (3 * 24 * 60 * 60);
-        if (task_database_query_by_time(now, three_days_later, NULL, "pending", query_results, MAX_QUERY_RESULTS, &approaching_count) == ESP_OK) {
+        time_range_t range_3d = time_utils_get_three_day_range();
+        if (task_database_query_by_time(now, range_3d.end, NULL, "pending", query_results, MAX_QUERY_RESULTS, &approaching_count) == ESP_OK) {
             for (int i = 0; i < approaching_count; i++) {
                 if (query_results[i].reminder > 0) continue;
                 char msg[RESPONSE_BUFFER_SIZE];

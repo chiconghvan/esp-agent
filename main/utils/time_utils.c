@@ -250,6 +250,32 @@ time_range_t time_utils_get_this_month_range(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Lấy time range cho 3 ngày (Hôm nay, Ngày mai, Ngày kia)
+ * -------------------------------------------------------------------------- */
+time_range_t time_utils_get_three_day_range(void)
+{
+    time_t now = time(NULL);
+    struct tm time_h = {0};
+    localtime_r(&now, &time_h);
+
+    /* 00:00 hôm nay */
+    time_h.tm_hour = 0;
+    time_h.tm_min = 0;
+    time_h.tm_sec = 0;
+    time_t start = mktime(&time_h);
+
+    /* 23:59:59 của ngày kia (today + 2) */
+    time_h.tm_mday += 2;
+    time_h.tm_hour = 23;
+    time_h.tm_min = 59;
+    time_h.tm_sec = 59;
+    time_t end = mktime(&time_h);
+
+    time_range_t range = { .start = start, .end = end };
+    return range;
+}
+
+/* --------------------------------------------------------------------------
  * Format thông tin lặp lại thành tiếng Việt
  * -------------------------------------------------------------------------- */
 char *time_utils_format_repeat(const char *repeat, int interval, char *buffer, size_t buffer_size)

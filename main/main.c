@@ -113,23 +113,33 @@ static void telegram_polling_loop(void)
         /* Xử lý Callback Query (nút bấm) trước */
         if (message.is_callback) {
             if (strcmp(message.callback_query, "cmd_deadline_3d") == 0) {
-                time_t now = time_utils_get_now();
-                time_t three_days = now + (3 * 24 * 60 * 60);
-                task_record_t results[5];
+                time_range_t range = time_utils_get_three_day_range();
+                /* Cấp phát Heap để tránh Stack Overflow (4KB) */
+                task_record_t *results = (task_record_t *)calloc(10, sizeof(task_record_t));
                 int found = 0;
-                task_database_query_by_time(now, three_days, NULL, "pending", results, 5, &found);
-                
-                char rep[RESPONSE_BUFFER_SIZE];
-                if (found > 0) {
-                    int w = snprintf(rep, sizeof(rep), "📅 **DEADLINE 3 NGÀY TỚI**\n───────────────\n");
-                    for (int j = 0; j < found; j++) {
-                        char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
-                        w += snprintf(rep + w, sizeof(rep) - w, "\n• [#%lu] %s\n  ⏳ Hạn: %s", (unsigned long)results[j].id, results[j].title, db);
+                if (results) {
+                    task_database_query_by_time(range.start, range.end, NULL, "pending", results, 10, &found);
+                    char rep[RESPONSE_BUFFER_SIZE];
+                    if (found > 0) {
+                        int w = snprintf(rep, sizeof(rep), "📅 **DEADLINE**\n───────────────\n");
+                        for (int j = 0; j < found; j++) {
+                            char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
+                            w += snprintf(rep + w, sizeof(rep) - w, "\n• [#%lu] %s\n  ⏳ Hạn: %s", (unsigned long)results[j].id, results[j].title, db);
+                        }
+                    } else {
+                        snprintf(rep, sizeof(rep), "✅ Tuyệt vời! Bạn không có deadline nào trong 3 ngày tới.");
                     }
-                } else {
-                    snprintf(rep, sizeof(rep), "✅ Tuyệt vời! Bạn không có deadline nào trong 3 ngày tới.");
+                    telegram_bot_send_message(message.chat_id, rep);
+                    free(results);
                 }
-                telegram_bot_send_message(message.chat_id, rep);
+            } else if (strncmp(message.callback_query, "cf_sug|", 7) == 0) {
+                /* Xác nhận gợi ý của AI */
+                const char *confirmed_cmd = message.callback_query + 7;
+                memset(response, 0, sizeof(response));
+                action_dispatcher_handle(confirmed_cmd, response, sizeof(response));
+                if (strlen(response) > 0) {
+                    telegram_bot_send_message(message.chat_id, response);
+                }
             }
             continue;
         }
@@ -154,19 +164,22 @@ static void telegram_polling_loop(void)
         } else if (strcmp(message.text, "/v") == 0) {
             snprintf(response, sizeof(response), "🏷️ **Firmware Version:** %s\n🔧 Target: ESP32-C3 Super Mini", FIRMWARE_VERSION);
         } else if (strcmp(message.text, "/deadline") == 0) {
-            time_t now = time_utils_get_now();
-            time_t three_days = now + (3 * 24 * 60 * 60);
-            task_record_t results[5];
+            time_range_t range = time_utils_get_three_day_range();
+            task_record_t *results = (task_record_t *)calloc(10, sizeof(task_record_t));
             int found = 0;
-            task_database_query_by_time(now, three_days, NULL, "pending", results, 5, &found);
-            if (found > 0) {
-                int w = snprintf(response, sizeof(response), "📅 **DANH SÁCH DEADLINE (3 NGÀY)**\n");
-                for (int j = 0; j < found; j++) {
-                    char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
-                    w += snprintf(response + w, sizeof(response) - w, "\n• [#%lu] %s (%s)", (unsigned long)results[j].id, results[j].title, db);
+            if (results) {
+                task_database_query_by_time(range.start, range.end, NULL, "pending", results, 10, &found);
+                if (found > 0) {
+                    int w = snprintf(response, sizeof(response), "📅 **DEADLINE**\n");
+                    for (int j = 0; j < found; j++) {
+                        char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
+                        w += snprintf(response + w, (sizeof(response) > (size_t)w) ? (sizeof(response) - w) : 0, 
+                                      "\n• [#%lu] %s (%s)", (unsigned long)results[j].id, results[j].title, db);
+                    }
+                } else {
+                    snprintf(response, sizeof(response), "✅ Hiện không có deadline nào sắp tới.");
                 }
-            } else {
-                snprintf(response, sizeof(response), "✅ Hiện không có deadline nào sắp tới.");
+                free(results);
             }
         } else if (strncmp(message.text, "/t", 2) == 0 && (message.text[2] == ' ' || message.text[2] == '\0' || (message.text[2] >= '0' && message.text[2] <= '9'))) {
             /* Lệnh /t <id1> <id2> ... - hiển thị chi tiết task */
@@ -247,6 +260,18 @@ static void telegram_polling_loop(void)
             /* Xử lý tin nhắn → dispatch action → nhận response */
             memset(response, 0, sizeof(response));
             err = action_dispatcher_handle(message.text, response, sizeof(response));
+
+            if (err == ESP_OK && strncmp(response, "SUGGEST|", 8) == 0) {
+                /* AI gợi ý câu hỏi thay vì chitchat */
+                char *suggestion = response + 8;
+                char prompt_buf[RESPONSE_BUFFER_SIZE];
+                snprintf(prompt_buf, sizeof(prompt_buf), "🤔 Có phải ý bạn là:\n\"<i>%.200s</i>\"?", suggestion);
+                
+                char cb_data[64];
+                snprintf(cb_data, sizeof(cb_data), "cf_sug|%.50s", suggestion);
+                telegram_bot_send_inline_keyboard(message.chat_id, prompt_buf, "✅ Đúng vậy", cb_data);
+                memset(response, 0, sizeof(response)); // Không gửi tin nhắn thường nữa
+            }
 
             if (err != ESP_OK) {
                 ESP_LOGW(TAG, "Xử lý tin nhắn thất bại");

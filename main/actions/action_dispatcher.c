@@ -128,9 +128,10 @@ static const char *PROMPT_B2_QUERY =
     "QUY TẮC:\n"
     "1. LUÔN thêm status=pending trừ khi user nói rõ\n"
     "2. Hỏi về task LẶP LẠI → filter repeat, KHÔNG thêm filter due_time (vì due_time gốc có thể ở quá khứ)\n"
-    "3. Hỏi quá hạn → due_time before + ngày giờ ISO8601 THỰC TẾ của lúc này\n"
-    "4. Hỏi 'tuần này' → due_time between T2 và CN, tính ISO8601 thực tế\n"
-    "5. Hỏi 'DEADLINE' → due_time between [00:00 hôm nay] và [23:59:59 của ngày hôm nay + 2 ngày]. VD: hôm nay 04/03 → value=2026-03-04T00:00:00, value_end=2026-03-06T23:59:59\n"
+    "3. Một tuần LUÔN bắt đầu từ Thứ 2 và kết thúc vào Chủ Nhật.\n"
+    "4. 'Tuần này': T2 đến CN tuần hiện tại. 'Tuần sau': T2 đến CN tuần kế tiếp.\n"
+    "   Ví dụ: Nếu hôm nay là Thứ 5, 05/03/2026 -> Tuần sau là 2026-03-09T00:00:00 đến 2026-03-15T23:59:59.\n"
+    "5. 'Deadline' hoặc 'Quá hạn': Dựa trên ngày giờ ISO8601 đã cung cấp để tính mốc Before/After.\n"
     "6. User đề cập LOẠI task (báo cáo, họp, nhắc, kỉ niệm...) → LUÔN thêm filter type tương ứng (report, meeting, reminder, anniversary, event, other)\n"
     "CHỈ JSON thuần.";
 
@@ -192,6 +193,13 @@ static const char *PROMPT_B2_SUMMARY =
     "Trả JSON:\n"
     "{\"period_start\": \"ISO8601|null\", \"period_end\": \"ISO8601|null\"}\n"
     "Mặc định: đầu tháng → hôm nay.\n"
+    "CHỈ JSON thuần.";
+
+static const char *PROMPT_B2_CHITCHAT =
+    "Bạn là trợ lý quản lý công việc. User vừa gửi một tin nhắn chitchat: \"%s\"\n\n"
+    "Nhiệm vụ của bạn:\n"
+    "Gợi ý 1 câu lệnh quản lý công việc (CREATE, QUERY, hoặc GET_DETAIL) phù hợp để kéo User quay lại công việc.\n"
+    "Trả về JSON: {\"suggestion\": \"Câu lệnh gợi ý (< 50 ký tự)\"}\n"
     "CHỈ JSON thuần.";
 
 /* ==========================================================================
@@ -326,6 +334,11 @@ static esp_err_t step_b2_parse(action_type_t intent,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
+        case ACTION_CHITCHAT:
+            snprintf(prompt, sizeof(prompt), PROMPT_B2_CHITCHAT,
+                     user_message);
+            break;
+
         default:
             return ESP_FAIL;
     }
@@ -399,15 +412,6 @@ esp_err_t action_dispatcher_handle(const char *user_message,
         return ESP_OK;
     }
 
-    /* CHITCHAT: không cần B2 */
-    if (intent == ACTION_CHITCHAT) {
-        snprintf(response_buffer, buffer_size,
-            "\xF0\x9F\x98\x8A Tôi là trợ lý quản lý công việc. "
-            "Hãy gửi tin nhắn liên quan đến lịch trình, công việc "
-            "hoặc nhắc nhở để tôi giúp bạn nhé!");
-        return ESP_OK;
-    }
-
     /* ======= B2: Parse chi tiết ======= */
     char *data_json = NULL;
     err = step_b2_parse(intent, user_message, &data_json);
@@ -421,6 +425,21 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     if (data_json != NULL) {
         strncpy(s_last_action_json, data_json, sizeof(s_last_action_json) - 1);
         s_last_action_json[sizeof(s_last_action_json) - 1] = '\0';
+    }
+
+    /* CHITCHAT: Xử lý gợi ý từ B2 */
+    if (intent == ACTION_CHITCHAT) {
+        cJSON *root = cJSON_Parse(data_json);
+        const char *sug = json_get_string(root, "suggestion", "");
+        if (strlen(sug) > 0) {
+            snprintf(response_buffer, buffer_size, "SUGGEST|%s", sug);
+        } else {
+            snprintf(response_buffer, buffer_size, 
+                "\xF0\x9F\x98\x8A Tôi là trợ lý quản lý công việc. Hãy thử hỏi về lịch trình của bạn nhé!");
+        }
+        if (root) cJSON_Delete(root);
+        if (data_json) free(data_json);
+        return ESP_OK;
     }
 
     /* ======= Dispatch đến handler ======= */
