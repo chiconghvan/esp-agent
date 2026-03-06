@@ -103,6 +103,7 @@ static const char *PROMPT_B2_CREATE =
     "2. Chỉ 1 ngày: due_time=ngày đó, start_time=null\n"
     "3. type: báo cáo=report, họp=meeting, nhắc=reminder, sự kiện/cưới/tiệc=event, kỉ niệm/sinh nhật=anniversary\n"
     "4. Không nói giờ → mặc định 08:00\n"
+    "5. Nếu user chỉ nói ngày/tháng mà không có năm, LUÔN dùng tháng/năm hiện tại. TUYỆT ĐỐI KHÔNG dùng năm 1970.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_QUERY =
@@ -158,11 +159,14 @@ static const char *PROMPT_B2_MUTATE =
     "    \"notes\": \"string|null\"\n"
     "  }\n"
     "}\n\n"
-    "COMPLETE_TASK: chỉ cần task_ids hoặc search_query.\n"
-    "DELETE_TASK: hủy/bỏ=soft, xóa hẳn=hard.\n"
-    "UPDATE_TASK: chỉ trả field CẦN ĐỔI, field KHÔNG đề cập → null (giữ nguyên). KHÔNG tự ý set field thành \"none\" nếu user không yêu cầu xóa field đó.\n"
-    "\"none\" = xóa giá trị field (set=0), CHỈ dùng khi user NÓI RÕ muốn xóa/bỏ field đó.\n"
-    "\"các task đó/này\" → dùng Context IDs.\n"
+    "QUY TẮC CHỌN TASK:\n"
+    "1. User mô tả TÊN task (VD: 'sửa task nhập dvc') → KHÔNG DÙNG Context IDs. Để `task_ids`: [], ghi `search_query`: \"nhập dvc\".\n"
+    "2. User nói SỐ ID (VD: 'xóa task 5') → điền `task_ids`: [5], `search_query`: null.\n"
+    "3. User NÓI RÕ 'tất cả task này/đó' → mới được phép chép nguyên mảng Context IDs vào `task_ids`.\n"
+    "QUY TẮC CẬP NHẬT & THỜI GIAN:\n"
+    "1. UPDATE_TASK: field không thay đổi → báo null. CHỈ dùng \"none\" nếu user bảo XÓA/BỎ field đó.\n"
+    "2. DELETE_TASK: hủy/bỏ = soft, xóa hẳn = hard.\n"
+    "3. THỜI GIAN: Bị thiếu năm/tháng → Tự nội suy theo năm hiện tại (2026). TUYỆT ĐỐI KHÔNG BAO GIỜ dùng năm 1970.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
