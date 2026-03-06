@@ -13,6 +13,7 @@
 #include "config.h"
 #include "json_parser.h"
 #include "time_utils.h"
+#include "firebase_sync.h"
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
@@ -384,6 +385,9 @@ esp_err_t task_database_create(task_record_t *task)
         ESP_LOGW(TAG, "Lưu index thất bại (task đã lưu)");
     }
 
+    /* Đồng bộ lên Firebase (chạy ngầm) */
+    firebase_sync_upload_task(task);
+
     ESP_LOGI(TAG, "Đã tạo task #%" PRIu32 ": %s", task->id, task->title);
     return ESP_OK;
 }
@@ -410,6 +414,9 @@ esp_err_t task_database_update(const task_record_t *task)
     update_index_entry(task);
     task_database_save_index();
 
+    /* Đồng bộ cập nhật lên Firebase (chạy ngầm) */
+    firebase_sync_upload_task(task);
+
     ESP_LOGI(TAG, "Đã cập nhật task #%" PRIu32, task->id);
     return ESP_OK;
 }
@@ -430,6 +437,9 @@ esp_err_t task_database_soft_delete(uint32_t task_id)
 
     update_index_entry(&task);
     task_database_save_index();
+
+    /* Đồng bộ soft-delete (trạng thái cancelled) lên Firebase */
+    firebase_sync_upload_task(&task);
 
     ESP_LOGI(TAG, "Đã hủy task #%" PRIu32 ": %s", task_id, task.title);
     return ESP_OK;
@@ -468,6 +478,10 @@ esp_err_t task_database_hard_delete(uint32_t task_id)
     }
 
     task_database_save_index();
+
+    /* Hard delete Firebase (xoá node JSON) */
+    firebase_sync_delete_task(task_id);
+
     ESP_LOGI(TAG, "Đã xóa cứng task #%" PRIu32, task_id);
     return ESP_OK;
 }
@@ -623,6 +637,26 @@ esp_err_t task_database_query_due_reminders(task_record_t *results, int max_resu
         }
     }
 
+    return ESP_OK;
+}
+
+/* --------------------------------------------------------------------------
+ * Tùy chọn nâng cao: Lưu nguyên trạng (Write raw) cho quá trình sync boot
+ * Không đẩy lại lên firebase
+ * -------------------------------------------------------------------------- */
+esp_err_t task_database_write_raw(const task_record_t *task)
+{
+    if (task == NULL) return ESP_ERR_INVALID_ARG;
+
+    // Ép max ID để next_id luôn chuẩn xác
+    if (task->id >= task_index.next_id) {
+        task_index.next_id = task->id + 1;
+    }
+
+    esp_err_t err = save_task_file(task);
+    if (err != ESP_OK) return err;
+
+    update_index_entry(task);
     return ESP_OK;
 }
 

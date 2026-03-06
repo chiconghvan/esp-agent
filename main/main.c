@@ -30,6 +30,8 @@
 #include "action_dispatcher.h"
 #include "reminder_scheduler.h"
 #include "token_tracker.h"
+#include "action_undo.h"
+#include "firebase_sync.h"
 #include "time_utils.h"
 #include "display_manager.h"
 #include "esp_ota_ops.h"
@@ -138,6 +140,16 @@ static void telegram_polling_loop(void)
                 memset(response, 0, sizeof(response));
                 action_dispatcher_handle(confirmed_cmd, response, sizeof(response));
                 if (strlen(response) > 0) {
+                    telegram_bot_send_message(message.chat_id, response);
+                }
+            } else if (strcmp(message.callback_query, "cmd_undo") == 0) {
+                /* Xử lý nút Undo */
+                memset(response, 0, sizeof(response));
+                if (action_undo_execute(response, sizeof(response)) == ESP_OK) {
+                    /* Thành công thì gửi thông báo */
+                    telegram_bot_send_message(message.chat_id, response);
+                } else {
+                    /* Thất bại cũng báo lỗi */
                     telegram_bot_send_message(message.chat_id, response);
                 }
             }
@@ -287,7 +299,18 @@ static void telegram_polling_loop(void)
 
         /* Gửi response về Telegram */
         if (strlen(response) > 0) {
-            err = telegram_bot_send_message(message.chat_id, response);
+            /* Kiểm tra xem có thao tác nào vừa thực hiện có thể undo không */
+            if (action_undo_is_available()) {
+                err = telegram_bot_send_inline_keyboard(message.chat_id, response, "↩️ Hoàn tác (Undo)", "cmd_undo");
+                // Sau khi đã trình bày tuỳ chọn undo cho user trong tin nhắn hiện tại
+                // Chúng ta clear trạng thái để các tin nhắn truy vấn tiếp theo không bị dính nút undo nữa
+                // Chỉ valid cho ngay sau hành động mutation (ngay tại tick này)
+                // Lưu ý: Nếu user nhắn thêm 1 tin khác, undo.bin vẫn còn đó đến khi user ấn undo hoặc thao tác đè lên
+                // Tuy nhiên về UI, ta chỉ hiện nút ở tin nhắn phản hồi trực tiếp của mutation
+            } else {
+                err = telegram_bot_send_message(message.chat_id, response);
+            }
+
             if (err == ESP_OK) {
                 ESP_LOGI(TAG, "<<< Đã gửi response");
             } else {
@@ -364,6 +387,24 @@ void app_main(void)
         esp_restart();
     }
     ESP_LOGI(TAG, "[3/5] Database OK");
+    display_boot_progress(60, "Khoi tao Firebase Sync...");
+
+    /* Khởi tạo Firebase Sync Background Queue */
+    firebase_sync_init();
+
+    /* PULL ON BOOT: Nạp lại CSDL từ Cloud nếu ổ chứa nội gián SPIFFS đang trống */
+    if (task_database_get_index()->count == 0) {
+        display_boot_progress(65, "Tuyen vao Firebase...");
+        ESP_LOGI(TAG, "Database trống, bắt đầu tải từ Firebase xuống...");
+        if (firebase_sync_download_all() == ESP_OK) {
+            ESP_LOGI(TAG, "Khôi phục dữ liệu từ Firebase thành công!");
+        }
+    } else {
+        /* PUSH ON BOOT: Nếu local có data, ta chủ động đẩy lên Cloud để đảm bảo Cloud luôn cập nhật */
+        ESP_LOGI(TAG, "Phát hiện %d task local, đang đồng bộ lên Cloud...", task_database_get_index()->count);
+        firebase_sync_upload_all();
+    }
+
     display_boot_progress(70, "Token Tracker...");
 
     /* Khởi tạo Token Tracker */

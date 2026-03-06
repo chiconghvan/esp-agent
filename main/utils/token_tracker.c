@@ -31,7 +31,7 @@ static const char *TAG = "token_tracker";
 #define PRICE_CHAT_INPUT_PER_TOKEN    (0.15 / 1000000.0)
 #define PRICE_CHAT_OUTPUT_PER_TOKEN   (0.60 / 1000000.0)
 #define PRICE_EMBEDDING_PER_TOKEN     (0.02 / 1000000.0)
-#define USD_TO_VND                    25500.0
+#define USD_TO_VND                    26200.0
 
 /* Thống kê tháng hiện tại và tổng cộng */
 static token_stats_t s_monthly = {0};

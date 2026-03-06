@@ -11,6 +11,7 @@
 
 #include "action_dispatcher.h"
 #include "task_database.h"
+#include "action_undo.h"
 #include "vector_search.h"
 #include "openai_client.h"
 #include "json_parser.h"
@@ -118,9 +119,17 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         int deleted_count = 0;
         int written = snprintf(response, response_size, "🚫 Đã hủy %d công việc:\n", explicit_count);
 
+        /* Array to hold old tasks for Undo */
+        task_record_t *old_tasks = malloc(sizeof(task_record_t) * explicit_count);
+        int old_tasks_count = 0;
+
         for (int i = 0; i < explicit_count; i++) {
             task_record_t task;
             if (task_database_read(explicit_task_ids[i], &task) == ESP_OK) {
+                if (old_tasks) {
+                    old_tasks[old_tasks_count++] = task;
+                }
+
                 if (task_database_soft_delete(explicit_task_ids[i]) == ESP_OK) {
                     written += snprintf(response + written, response_size - written,
                         " - [#%" PRIu32 "] %s\n", task.id, task.title);
@@ -128,6 +137,12 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
                 }
             }
         }
+        
+        if (old_tasks && old_tasks_count > 0) {
+            action_undo_save(UNDO_DELETE, old_tasks, old_tasks_count);
+        }
+        if (old_tasks) free(old_tasks);
+
         if (deleted_count == 0) format_not_found("theo ID", response, response_size);
         return ESP_OK;
     } else {
@@ -147,7 +162,15 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         uint32_t target_id = res[0].task_id;
         task_record_t task;
         task_database_read(target_id, &task);
+        
+        /* Lưu trạng thái cũ để Undo */
+        task_record_t old_task = task;
+
         task_database_soft_delete(target_id);
+        
+        /* Lưu undo log */
+        action_undo_save(UNDO_DELETE, &old_task, 1);
+
         snprintf(response, response_size, "🚫 Đã hủy task #%" PRIu32 ": %s", target_id, task.title);
         display_show_result("Huy task", target_id, task.title);
         return ESP_OK;
@@ -183,6 +206,9 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
     if (success_count > 0) {
         snprintf(response + written, response_size - written, "───────────────\n🚀 Thành công %d task.", success_count);
         display_show_result("Xoa xong", success_count, "tasks");
+        
+        /* Delete Undo Queue since we did a hard delete */
+        action_undo_clear();
     } else {
         snprintf(response, response_size, "❌ Không thể thực hiện xóa. Có lỗi xảy ra.");
     }

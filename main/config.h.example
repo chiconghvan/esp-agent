@@ -16,7 +16,7 @@
 /* ===========================================================================
  * Project Version
  * =========================================================================== */
-#define FIRMWARE_VERSION         "v1.1.4"
+#define FIRMWARE_VERSION         "v2.0.0"
 
 /* ===========================================================================
  * WiFi Configuration
@@ -85,5 +85,11 @@
 #define RESPONSE_BUFFER_SIZE     1024
 #define TELEGRAM_MSG_BUFFER_SIZE 2048
 #define OPENAI_REQUEST_BUFFER_SIZE 10240
+
+/* ===========================================================================
+ * Firebase Cloud Sync Configuration
+ * =========================================================================== */
+#define FIREBASE_HOST           "your-project-id-default-rtdb.firebaseio.com"
+#define FIREBASE_AUTH           "your_database_secret_or_token"
 
 #endif /* CONFIG_H */

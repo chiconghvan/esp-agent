@@ -171,6 +171,15 @@ const task_index_t *task_database_get_index(void);
 esp_err_t task_database_update_overdue(void);
 
 /**
+ * @brief Lưu nguyên trạng một task vào CSDL (dùng khi fetch dữ liệu từ Cloud lúc Boot)
+ * Không cập nhật trigger lên firebase để tránh loopback.
+ * 
+ * @param task Task data đã được điền đủ trạng thái
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t task_database_write_raw(const task_record_t *task);
+
+/**
  * @brief Lưu index xuống SPIFFS (gọi sau khi có thay đổi)
  *
  * @return esp_err_t ESP_OK nếu thành công

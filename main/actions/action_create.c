@@ -10,6 +10,7 @@
 
 #include "action_dispatcher.h"
 #include "task_database.h"
+#include "action_undo.h"
 #include "vector_search.h"
 #include "openai_client.h"
 #include "json_parser.h"
@@ -98,6 +99,9 @@ esp_err_t action_create_task(const char *data_json, char *response, size_t respo
             "\xE2\x9A\xA0\xEF\xB8\x8F Lỗi lưu công việc vào database.");
         return err;
     }
+
+    /* Lưu Undo Log (với action CREATE) */
+    action_undo_save(UNDO_CREATE, &task, 1);
 
     /* Tạo embedding cho title */
     float embedding[EMBEDDING_DIM];

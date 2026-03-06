@@ -16,6 +16,8 @@ set(COMPONENT_SRCS
     "actions/action_detail.c"
     "actions/action_search.c"
     "actions/action_summary.c"
+    "actions/action_undo.c"
+    "cloud/firebase_sync.c"
     "actions/action_complete.c"
     "actions/action_delete.c"
     "actions/action_update.c"
@@ -39,6 +41,7 @@ set(COMPONENT_INCLUDE_DIRS
     "scheduler"
     "utils"
     "display"
+    "cloud"
 )
 
 idf_component_register(
@@ -51,6 +54,7 @@ idf_component_register(
         esp_http_client
         esp-tls
         spiffs
+        fatfs
         json
         esp_timer
         esp_netif

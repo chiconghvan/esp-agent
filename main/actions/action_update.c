@@ -11,6 +11,7 @@
 
 #include "action_dispatcher.h"
 #include "task_database.h"
+#include "action_undo.h"
 #include "vector_search.h"
 #include "openai_client.h"
 #include "json_parser.h"
@@ -91,10 +92,17 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
         int updated_count = 0;
         int written = snprintf(response, response_size, "\xF0\x9F\x93\x9D Đã cập nhật %d công việc:\n", explicit_count);
         char changes_buf[128] = "";
+
+        /* Array to hold old tasks for Undo */
+        task_record_t *old_tasks = malloc(sizeof(task_record_t) * explicit_count);
+        int old_tasks_count = 0;
         
         for (int i = 0; i < explicit_count; i++) {
             task_record_t task;
             if (task_database_read(explicit_task_ids[i], &task) == ESP_OK) {
+                if (old_tasks) {
+                    old_tasks[old_tasks_count++] = task;
+                }
                 
                 int changes_len = 0;
                 bool title_changed = false;
@@ -206,6 +214,11 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
 
         cJSON_Delete(data);
 
+        if (old_tasks && old_tasks_count > 0) {
+            action_undo_save(UNDO_UPDATE, old_tasks, old_tasks_count);
+        }
+        if (old_tasks) free(old_tasks);
+
         if (updated_count == 0) {
             format_not_found("theo ID yêu cầu", response, response_size);
         }
@@ -253,6 +266,9 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             format_not_found("theo ID yêu cầu", response, response_size);
             return ESP_OK; 
         }
+
+        /* Lưu lại trạng thái cũ cho Undo */
+        task_record_t old_task = task;
 
         /* Áp dụng updates */
         char changes_buf[256] = "";
@@ -354,6 +370,9 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             format_error("Không thể cập nhật task", response, response_size);
             return err;
         }
+
+        /* Lưu undo log */
+        action_undo_save(UNDO_UPDATE, &old_task, 1);
 
         if (title_changed) {
             float new_embedding[EMBEDDING_DIM];

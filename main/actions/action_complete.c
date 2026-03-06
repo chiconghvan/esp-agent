@@ -11,6 +11,7 @@
 
 #include "action_dispatcher.h"
 #include "task_database.h"
+#include "action_undo.h"
 #include "vector_search.h"
 #include "openai_client.h"
 #include "json_parser.h"
@@ -65,10 +66,17 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
         int completed_count = 0;
         int written = snprintf(response, response_size, "\xE2\x9C\x85 Đã hoàn thành %d công việc:\n", explicit_count);
 
+        /* Array to hold old tasks for Undo */
+        task_record_t *old_tasks = malloc(sizeof(task_record_t) * explicit_count);
+        int old_tasks_count = 0;
+
         for (int i = 0; i < explicit_count; i++) {
             task_record_t task;
             if (task_database_read(explicit_task_ids[i], &task) == ESP_OK) {
                 if (strcmp(task.status, "done") != 0) {
+                    if (old_tasks) {
+                        old_tasks[old_tasks_count++] = task;
+                    }
                     strncpy(task.status, "done", sizeof(task.status) - 1);
                     task.completed_at = time_utils_get_now();
                     
@@ -103,6 +111,11 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
                 }
             }
         }
+
+        if (old_tasks && old_tasks_count > 0) {
+            action_undo_save(UNDO_COMPLETE, old_tasks, old_tasks_count);
+        }
+        if (old_tasks) free(old_tasks);
 
         if (completed_count == 0) {
             format_not_found("theo ID yêu cầu, hoặc đã hoàn thành rồi", response, response_size);
@@ -164,6 +177,9 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
             return ESP_OK;
         }
 
+        /* Lưu trạng thái cũ để Undo */
+        task_record_t old_task = task;
+
         /* Đánh dấu hoàn thành */
         strncpy(task.status, "done", sizeof(task.status) - 1);
         task.completed_at = time_utils_get_now();
@@ -203,6 +219,9 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
                          next_task.id, next_due_buf);
             }
         }
+
+        /* Lưu undo log */
+        action_undo_save(UNDO_COMPLETE, &old_task, 1);
 
         /* Format response */
         format_task_completed(&task, response, response_size);
