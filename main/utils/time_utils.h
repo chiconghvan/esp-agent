@@ -15,6 +15,7 @@
 #include <time.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_err.h"
 
 /**
  * @brief Cấu trúc lưu khoảng thời gian (start → end)
@@ -142,5 +143,15 @@ time_t time_utils_next_due(time_t current_due, const char *repeat, int interval)
  * @return char* "Thứ 2", "Thứ 3", ..., "Chủ nhật"
  */
 char *time_utils_get_weekday_name(time_t timestamp, char *buffer, size_t buffer_size);
+
+/**
+ * @brief Cập nhật thời gian hệ thống từ chuỗi HTTP Date header
+ *
+ * Chuỗi có định dạng: "Fri, 06 Mar 2026 08:35:01 GMT"
+ *
+ * @param date_str Chuỗi thời gian từ HTTP header
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t time_utils_set_time_from_http_date(const char *date_str);
 
 #endif /* TIME_UTILS_H */

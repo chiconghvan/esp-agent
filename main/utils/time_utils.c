@@ -363,3 +363,57 @@ char *time_utils_get_weekday_name(time_t timestamp, char *buffer, size_t buffer_
     snprintf(buffer, buffer_size, "%s", WEEKDAY_NAMES[time_info.tm_wday]);
     return buffer;
 }
+
+/* --------------------------------------------------------------------------
+ * Cập nhật thời gian hệ thống từ chuỗi HTTP Date header
+ * Định dạng: "Fri, 06 Mar 2026 08:35:01 GMT"
+ * -------------------------------------------------------------------------- */
+esp_err_t time_utils_set_time_from_http_date(const char *date_str)
+{
+    if (date_str == NULL || strlen(date_str) < 25) return ESP_ERR_INVALID_ARG;
+
+    static const char *months[] = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    };
+
+    struct tm tm_h = {0};
+    char m_name[4];
+    int day, year, hour, min, sec;
+
+    /* Sscanf: bỏ qua Thứ (3 ký tự), lấy ngày, tháng (chuỗi), năm, giờ, phút, giây */
+    /* Ví dụ: "Fri, 06 Mar 2026 08:35:01 GMT" */
+    if (sscanf(date_str + 5, "%d %3s %d %d:%d:%d", 
+               &day, m_name, &year, &hour, &min, &sec) != 6) {
+        return ESP_FAIL;
+    }
+
+    tm_h.tm_mday = day;
+    tm_h.tm_year = year - 1900;
+    tm_h.tm_hour = hour;
+    tm_h.tm_min = min;
+    tm_h.tm_sec = sec;
+
+    /* Tìm index của tháng */
+    tm_h.tm_mon = -1;
+    for (int i = 0; i < 12; i++) {
+        if (strcmp(m_name, months[i]) == 0) {
+            tm_h.tm_mon = i;
+            break;
+        }
+    }
+
+    if (tm_h.tm_mon == -1) return ESP_FAIL;
+
+    /* Tính toán time_t (đây là thời gian GMT) */
+    /* mktime lùi lại timezone nội tại, nhưng chuỗi này là GMT chuẩn. */
+    /* Ở ESP32 ban đầu là UTC (offset 0), nên mktime sẽ chuẩn xác. */
+    time_t now_gmt = mktime(&tm_h);
+    if (now_gmt == -1) return ESP_FAIL;
+
+    struct timeval tv = { .tv_sec = now_gmt, .tv_usec = 0 };
+    settimeofday(&tv, NULL);
+
+    ESP_LOGI(TAG, "Đã cập nhật thời gian từ HTTP: %s", date_str);
+    return ESP_OK;
+}

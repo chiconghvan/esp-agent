@@ -11,6 +11,7 @@
 #include "telegram_bot.h"
 #include "config.h"
 #include "json_parser.h"
+#include "time_utils.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -35,6 +36,16 @@ static int response_buffer_len = 0;
 static esp_err_t http_event_handler(esp_http_client_event_t *event)
 {
     switch (event->event_id) {
+        case HTTP_EVENT_ON_HEADER:
+            if (strcasecmp(event->header_key, "Date") == 0) {
+                /* Đồng bộ thời gian nếu hệ thống chưa có thời gian chuẩn (trước 2024) */
+                time_t now = time(NULL);
+                if (now < 1704067200) { 
+                    time_utils_set_time_from_http_date(event->header_value);
+                }
+            }
+            break;
+
         case HTTP_EVENT_ON_DATA:
             /* Append data vào buffer */
             if (response_buffer_len + event->data_len < HTTP_BUFFER_SIZE - 1) {

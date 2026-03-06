@@ -310,12 +310,14 @@ esp_err_t wifi_manager_start_sntp(void)
     sntp_set_time_sync_notification_cb(sntp_sync_notification);
     esp_sntp_init();
 
+    /* Đợi tối đa 1 giây thôi (cần tốc độ khởi động). 
+       Việc đồng bộ chính xác sẽ được bổ sung qua Telegram HTTP Date Header sau đó. */
     int retry = 0;
-    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && retry < 10) {
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && retry < 1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         retry++;
     }
-    return (retry >= 10) ? ESP_ERR_TIMEOUT : ESP_OK;
+    return (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 bool wifi_manager_is_connected(void) {
