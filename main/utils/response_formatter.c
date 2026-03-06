@@ -38,6 +38,7 @@ static const char *get_status_icon(const char *status)
 {
     if (strcmp(status, "done") == 0)       return "✅";
     if (strcmp(status, "cancelled") == 0)  return "❌";
+    if (strcmp(status, "overdue") == 0)    return "⏳";
     return "🔵";
 }
 

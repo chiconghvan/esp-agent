@@ -194,6 +194,7 @@ static void telegram_polling_loop(void)
                     "Ví dụ: /t 1 2 3\n"
                     "Hoặc: /t 1,2,3");
             } else {
+                task_database_update_overdue();
                 int written = 0;
                 int found = 0;
                 /* Parse IDs: hỗ trợ cách bằng dấu cách, phẩy, chấm phẩy */
@@ -244,6 +245,7 @@ static void telegram_polling_loop(void)
                                 strlen(task.notes) > 0 ? task.notes : "(không có)",
                                 (strcmp(task.status, "done") == 0) ? "✅ Hoàn thành" :
                                 (strcmp(task.status, "cancelled") == 0) ? "❌ Đã hủy" :
+                                (strcmp(task.status, "overdue") == 0) ? "⏳ Quá hạn" :
                                 "🔵 Đang thực hiện");
                             found++;
                         }
