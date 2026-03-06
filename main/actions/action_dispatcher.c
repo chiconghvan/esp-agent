@@ -126,7 +126,7 @@ static const char *PROMPT_B2_QUERY =
     "  \"limit\": null\n"
     "}\n\n"
     "QUY TẮC:\n"
-    "1. LUÔN thêm status=pending trừ khi user nói rõ. (Hệ thống tự động gộp pending và overdue. Nếu user CHỈ hỏi task quá hạn, dùng status=overdue).\n"
+    "1. LUÔN thêm status=pending trừ khi user nói rõ. (Hệ thống tự động gộp pending và overdue. Nếu user CHỈ hỏi task quá hạn, dùng status=overdue và KHÔNG CẦN thêm filter due_time).\n"
     "2. Hỏi về task LẶP LẠI → filter repeat, KHÔNG thêm filter due_time (vì due_time gốc có thể ở quá khứ)\n"
     "3. Một tuần LUÔN bắt đầu từ Thứ 2 và kết thúc vào Chủ Nhật.\n"
     "4. 'Tuần này': T2 đến CN tuần hiện tại. 'Tuần sau': T2 đến CN tuần kế tiếp.\n"
