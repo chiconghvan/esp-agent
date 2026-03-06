@@ -142,14 +142,22 @@ static esp_err_t load_task_file(uint32_t task_id, task_record_t *task)
         return ESP_ERR_NOT_FOUND;
     }
 
-    /* Đọc toàn bộ nội dung file */
-    char buffer[JSON_BUFFER_SIZE];
-    size_t read_len = fread(buffer, 1, sizeof(buffer) - 1, file);
+    /* Đọc toàn bộ nội dung file (Sử dụng malloc để tránh tràn Stack) */
+    char *buffer = (char *)malloc(JSON_BUFFER_SIZE);
+    if (buffer == NULL) {
+        ESP_LOGE(TAG, "Lỗi cấp phát bộ nhớ cho buffer đọc file");
+        fclose(file);
+        return ESP_ERR_NO_MEM;
+    }
+
+    size_t read_len = fread(buffer, 1, JSON_BUFFER_SIZE - 1, file);
     fclose(file);
     buffer[read_len] = '\0';
 
     /* Parse JSON */
     cJSON *json = json_parse_string(buffer);
+    free(buffer);
+
     if (json == NULL) {
         ESP_LOGE(TAG, "Lỗi parse JSON từ file: %s", filepath);
         return ESP_FAIL;

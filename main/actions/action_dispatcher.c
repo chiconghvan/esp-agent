@@ -256,13 +256,16 @@ static esp_err_t step_b1_classify(const char *user_message,
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     /* Build prompt B1 */
-    char prompt[2048];
-    snprintf(prompt, sizeof(prompt), PROMPT_B1, iso_buf, date_buf, weekday_buf, context_ids);
+    char *prompt = (char *)malloc(2048);
+    if (!prompt) return ESP_ERR_NO_MEM;
+    snprintf(prompt, 2048, PROMPT_B1, iso_buf, date_buf, weekday_buf, context_ids);
 
     /* Gọi AI */
     char llm_response[512];
     esp_err_t err = openai_chat_completion(prompt, user_message,
                                             llm_response, sizeof(llm_response));
+    free(prompt);
+    
     if (err != ESP_OK) return err;
 
     /* Parse JSON */
@@ -300,70 +303,84 @@ static esp_err_t step_b2_parse(action_type_t intent,
     time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
-    char prompt[2048];
+    char *prompt = (char *)malloc(2048);
+    if (!prompt) return ESP_ERR_NO_MEM;
 
     switch (intent) {
         case ACTION_CREATE_TASK:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_CREATE,
+            snprintf(prompt, 2048, PROMPT_B2_CREATE,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_QUERY_TASKS:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_QUERY,
+            snprintf(prompt, 2048, PROMPT_B2_QUERY,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_UPDATE_TASK:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
+            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "UPDATE_TASK", user_message, context_ids);
             break;
 
         case ACTION_COMPLETE_TASK:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
+            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "COMPLETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_DELETE_TASK:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_MUTATE,
+            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "DELETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_GET_DETAIL:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_DETAIL,
+            snprintf(prompt, 2048, PROMPT_B2_DETAIL,
                      iso_buf, date_buf, weekday_buf, user_message, context_ids);
             break;
 
         case ACTION_SEARCH_SEMANTIC:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_SEARCH,
+            snprintf(prompt, 2048, PROMPT_B2_SEARCH,
                      user_message);
             break;
 
         case ACTION_TASK_SUMMARY:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_SUMMARY,
+            snprintf(prompt, 2048, PROMPT_B2_SUMMARY,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_CHITCHAT:
-            snprintf(prompt, sizeof(prompt), PROMPT_B2_CHITCHAT,
+            snprintf(prompt, 2048, PROMPT_B2_CHITCHAT,
                      user_message);
             break;
 
         default:
+            free(prompt);
             return ESP_FAIL;
     }
 
-    /* Gọi AI lần 2 */
-    char llm_response[JSON_BUFFER_SIZE];
+    /* Gọi AI lần 2 (Sử dụng malloc để tránh tràn Stack) */
+    char *llm_response = (char *)malloc(JSON_BUFFER_SIZE);
+    if (!llm_response) {
+        free(prompt);
+        return ESP_ERR_NO_MEM;
+    }
+    
     esp_err_t err = openai_chat_completion(prompt, user_message,
-                                            llm_response, sizeof(llm_response));
-    if (err != ESP_OK) return err;
+                                            llm_response, JSON_BUFFER_SIZE);
+    free(prompt);
+    
+    if (err != ESP_OK) {
+        free(llm_response);
+        return err;
+    }
 
     /* Extract JSON */
     cJSON *parsed = json_extract_from_text(llm_response);
     if (parsed == NULL) {
         ESP_LOGE(TAG, "B2: Không parse được: %s", llm_response);
+        free(llm_response);
         return ESP_FAIL;
     }
+    free(llm_response);
 
     *out_data_json = cJSON_Print(parsed);
     cJSON_Delete(parsed);
