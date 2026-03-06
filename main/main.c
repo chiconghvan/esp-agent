@@ -82,7 +82,7 @@ static void telegram_polling_loop(void)
     ESP_LOGI(TAG, "Đang lắng nghe tin nhắn...");
 
     telegram_message_t message;
-    char response[TELEGRAM_MSG_BUFFER_SIZE];
+    static char response[TELEGRAM_MSG_BUFFER_SIZE]; // Dùng static (RAM tĩnh) thay vì Stack để tránh Stack Overflow
 
     while (1) {
         /* Cập nhật đèn LED trạng thái (Sáng khi WiFi OK) */
@@ -158,9 +158,14 @@ static void telegram_polling_loop(void)
             token_tracker_format_status(response, sizeof(response));
         } else if (strcmp(message.text, "/last") == 0) {
             memset(response, 0, sizeof(response));
-            char last_json[JSON_BUFFER_SIZE];
-            action_dispatcher_get_last_json(last_json, sizeof(last_json));
-            snprintf(response, sizeof(response), "🔍 <b>Action JSON cuối cùng:</b>\n\n<code>%s</code>", last_json);
+            char *last_json = (char *)malloc(JSON_BUFFER_SIZE);
+            if (last_json != NULL) {
+                action_dispatcher_get_last_json(last_json, JSON_BUFFER_SIZE);
+                snprintf(response, sizeof(response), "🔍 <b>Action JSON cuối cùng:</b>\n\n<code>%s</code>", last_json);
+                free(last_json);
+            } else {
+                snprintf(response, sizeof(response), "⚠️ Lỗi: Không đủ RAM để hiển thị JSON.");
+            }
         } else if (strcmp(message.text, "/v") == 0) {
             snprintf(response, sizeof(response), "🏷️ **Firmware Version:** %s\n🔧 Target: ESP32-C3 Super Mini", FIRMWARE_VERSION);
         } else if (strcmp(message.text, "/deadline") == 0) {

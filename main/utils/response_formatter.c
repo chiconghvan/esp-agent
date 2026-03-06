@@ -104,7 +104,7 @@ char *format_task_list(const task_index_entry_t **matches, int count, const char
             get_status_icon(t.status), get_type_name_vn(t.type),
             due_buf, repeat_buf, created_buf);
 
-        if (written + item_len + 100 > 3800) {
+        if (written + item_len + 100 > buffer_size - 100) {
             telegram_bot_send_default(buffer);
             written = snprintf(buffer, buffer_size, "📋 %s (tiếp theo):\n───────────────\n", label);
         }
@@ -142,7 +142,7 @@ char *format_task_list_short(const task_index_entry_t **matches, int count, cons
                                 i + 1, get_type_icon(t.type), t.id, 
                                 t.title, get_status_icon(t.status));
 
-        if (written + item_len + 100 > 3800) {
+        if (written + item_len + 100 > buffer_size - 100) {
             telegram_bot_send_default(buffer);
             written = snprintf(buffer, buffer_size, "📄 %s (tiếp theo):\n───────────────\n", label);
         }
