@@ -184,6 +184,10 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                 
                 if (changes_len >= 2) changes_buf[changes_len - 2] = '\0';
 
+                if (strcmp(task.status, "overdue") == 0 && (task.due_time == 0 || task.due_time > time_utils_get_now())) {
+                    strncpy(task.status, "pending", sizeof(task.status) - 1);
+                }
+
                 if (task_database_update(&task) == ESP_OK) {
                     if (title_changed) {
                         float new_emb[EMBEDDING_DIM];
@@ -339,6 +343,10 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
         cJSON_Delete(data);
 
         if (changes_len >= 2) changes_buf[changes_len - 2] = '\0';
+
+        if (strcmp(task.status, "overdue") == 0 && (task.due_time == 0 || task.due_time > time_utils_get_now())) {
+            strncpy(task.status, "pending", sizeof(task.status) - 1);
+        }
 
         /* Lưu task đã cập nhật */
         err = task_database_update(&task);

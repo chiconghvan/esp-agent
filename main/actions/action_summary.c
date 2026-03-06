@@ -59,6 +59,9 @@ esp_err_t action_task_summary(const char *data_json, char *response, size_t resp
     int count_pending = 0, count_done = 0, count_cancelled = 0, count_overdue = 0;
     int count_total = 0;
 
+    /* Cập nhật trạng thái overdue trước khi đếm */
+    task_database_update_overdue();
+
     for (int i = 0; i < index->count; i++) {
         const task_index_entry_t *entry = &index->entries[i];
 
@@ -81,10 +84,10 @@ esp_err_t action_task_summary(const char *data_json, char *response, size_t resp
 
         count_total++;
 
-        if (strcmp(entry->status, "pending") == 0) {
-            count_pending++;
+        if (strcmp(entry->status, "pending") == 0 || strcmp(entry->status, "overdue") == 0) {
+            count_pending++; /* Tính gộp chung vào đang chờ để lấy tổng quan */
             /* Kiểm tra quá hạn */
-            if (entry->due_time > 0 && entry->due_time < now) {
+            if (strcmp(entry->status, "overdue") == 0 || (entry->due_time > 0 && entry->due_time < now)) {
                 count_overdue++;
             }
         } else if (strcmp(entry->status, "done") == 0) {

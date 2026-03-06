@@ -113,8 +113,9 @@ static void reminder_task(void *arg)
         static int s_last_nudge_yday = -1;
         struct tm tm_n; localtime_r(&now, &tm_n);
         if (tm_n.tm_hour == 16 && tm_n.tm_min <= 2 && s_last_nudge_yday != tm_n.tm_yday) {
+            task_database_update_overdue(); // Cập nhật lại status
             int od_count = 0;
-            if (task_database_query_by_time(1, now, NULL, "pending", query_results, MAX_QUERY_RESULTS, &od_count) == ESP_OK && od_count > 0) {
+            if (task_database_query_by_time(1, now, NULL, "overdue", query_results, MAX_QUERY_RESULTS, &od_count) == ESP_OK && od_count > 0) {
                 char rep[RESPONSE_BUFFER_SIZE];
                 int w = snprintf(rep, sizeof(rep), "⏳ **NHẮC NHỞ 16:00**\nBạn còn %d việc quá hạn chưa xong:\n", od_count);
                 for (int j = 0; j < od_count && w < sizeof(rep) - 100; j++)

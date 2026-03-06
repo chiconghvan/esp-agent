@@ -95,6 +95,14 @@ static bool match_filter(const task_index_entry_t *entry,
         const char *val = get_index_str_field(entry, filter->field);
         if (val == NULL) return filter->op == FILTER_OP_IS_NULL;
 
+        /* Xử lý đặc biệt cho status = pending/incomplete để bao gồm cả overdue */
+        if (strcmp(filter->field, "status") == 0) {
+            bool is_target_pending = (strcmp(filter->str_value, "pending") == 0 || strcmp(filter->str_value, "incomplete") == 0);
+            if (is_target_pending && filter->op == FILTER_OP_EQUALS) {
+                return (strcmp(val, "pending") == 0 || strcmp(val, "overdue") == 0);
+            }
+        }
+
         switch (filter->op) {
             case FILTER_OP_EQUALS:      return strcmp(val, filter->str_value) == 0;
             case FILTER_OP_NOT_EQUALS:  return strcmp(val, filter->str_value) != 0;
@@ -288,6 +296,9 @@ esp_err_t action_query_tasks(const char *data_json, char *response, size_t respo
 
     ESP_LOGI(TAG, "Query: type=%s, label=%s, filters=%d, sort=%s, limit=%d",
              resp_type_buf, label_buf, filter_count, sort_buf, limit);
+
+    /* Cập nhật task quá hạn */
+    task_database_update_overdue();
 
     /* Duyệt index và filter */
     const task_index_t *index = task_database_get_index();

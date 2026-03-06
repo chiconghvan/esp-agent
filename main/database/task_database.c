@@ -465,6 +465,37 @@ esp_err_t task_database_hard_delete(uint32_t task_id)
 }
 
 /* --------------------------------------------------------------------------
+ * Cập nhật trạng thái các task quá hạn
+ * -------------------------------------------------------------------------- */
+esp_err_t task_database_update_overdue(void)
+{
+    time_t now = time_utils_get_now();
+    bool updated = false;
+
+    for (int i = 0; i < task_index.count; i++) {
+        task_index_entry_t *entry = &task_index.entries[i];
+
+        if (strcmp(entry->status, "pending") == 0 && entry->due_time > 0 && entry->due_time < now) {
+            strncpy(entry->status, "overdue", sizeof(entry->status) - 1);
+            
+            task_record_t task;
+            if (load_task_file(entry->id, &task) == ESP_OK) {
+                strncpy(task.status, "overdue", sizeof(task.status) - 1);
+                save_task_file(&task);
+            }
+            updated = true;
+        }
+    }
+
+    if (updated) {
+        task_database_save_index();
+        ESP_LOGI(TAG, "Đã cập nhật trạng thái về overdue cho các task quá hạn");
+    }
+    
+    return ESP_OK;
+}
+
+/* --------------------------------------------------------------------------
  * Truy vấn theo khoảng thời gian
  * -------------------------------------------------------------------------- */
 esp_err_t task_database_query_by_time(time_t start, time_t end,
@@ -487,11 +518,13 @@ esp_err_t task_database_query_by_time(time_t start, time_t end,
 
         /* Lọc theo status (nếu có) */
         if (status != NULL && strlen(status) > 0) {
-            const char *target_status = status;
-            if (strcmp(status, "incomplete") == 0) target_status = "pending";
-            else if (strcmp(status, "completed") == 0) target_status = "done";
-
-            if (strcmp(entry->status, target_status) != 0) continue;
+            if (strcmp(status, "pending") == 0 || strcmp(status, "incomplete") == 0) {
+                if (strcmp(entry->status, "pending") != 0 && strcmp(entry->status, "overdue") != 0) continue;
+            } else if (strcmp(status, "completed") == 0) {
+                if (strcmp(entry->status, "done") != 0) continue;
+            } else {
+                if (strcmp(entry->status, status) != 0) continue;
+            }
         }
 
         /* Kiểm tra due_time, start_time hoặc reminder nằm trong range */
@@ -537,11 +570,13 @@ esp_err_t task_database_query_by_type(const char *type, const char *status,
 
         /* Lọc theo status (nếu có) */
         if (status != NULL && strlen(status) > 0) {
-            const char *target_status = status;
-            if (strcmp(status, "incomplete") == 0) target_status = "pending";
-            else if (strcmp(status, "completed") == 0) target_status = "done";
-
-            if (strcmp(entry->status, target_status) != 0) continue;
+            if (strcmp(status, "pending") == 0 || strcmp(status, "incomplete") == 0) {
+                if (strcmp(entry->status, "pending") != 0 && strcmp(entry->status, "overdue") != 0) continue;
+            } else if (strcmp(status, "completed") == 0) {
+                if (strcmp(entry->status, "done") != 0) continue;
+            } else {
+                if (strcmp(entry->status, status) != 0) continue;
+            }
         } else {
             /* Mặc định bỏ qua cancelled */
             if (strcmp(entry->status, "cancelled") == 0) continue;

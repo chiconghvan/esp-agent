@@ -126,12 +126,12 @@ static const char *PROMPT_B2_QUERY =
     "  \"limit\": null\n"
     "}\n\n"
     "QUY TẮC:\n"
-    "1. LUÔN thêm status=pending trừ khi user nói rõ\n"
+    "1. LUÔN thêm status=pending trừ khi user nói rõ. (Hệ thống tự động gộp pending và overdue. Nếu user CHỈ hỏi task quá hạn, dùng status=overdue).\n"
     "2. Hỏi về task LẶP LẠI → filter repeat, KHÔNG thêm filter due_time (vì due_time gốc có thể ở quá khứ)\n"
     "3. Một tuần LUÔN bắt đầu từ Thứ 2 và kết thúc vào Chủ Nhật.\n"
     "4. 'Tuần này': T2 đến CN tuần hiện tại. 'Tuần sau': T2 đến CN tuần kế tiếp.\n"
     "   Ví dụ: Nếu hôm nay là Thứ 5, 05/03/2026 -> Tuần sau là 2026-03-09T00:00:00 đến 2026-03-15T23:59:59.\n"
-    "5. 'Deadline' hoặc 'Quá hạn': Dựa trên ngày giờ ISO8601 đã cung cấp để tính mốc Before/After.\n"
+    "5. 'Deadline' trong khoảng thời gian (hôm nay, tuần này): Nhớ dùng `op=\"before\"` với thời điểm KẾT THÚC của khoảng đó. Các task quá hạn trước đó vẫn sẽ xuất hiện vì chúng có status là overdue/pending.\n"
     "6. User đề cập LOẠI task (báo cáo, họp, nhắc, kỉ niệm...) → LUÔN thêm filter type tương ứng (report, meeting, reminder, anniversary, event, other)\n"
     "CHỈ JSON thuần.";
 
@@ -241,7 +241,8 @@ static action_type_t parse_intent(const char *intent_str)
  * ========================================================================== */
 static esp_err_t step_b1_classify(const char *user_message,
                                    action_type_t *out_intent,
-                                   float *out_confidence)
+                                   float *out_confidence,
+                                   char **out_b1_json)
 {
     char date_buf[32], weekday_buf[32], iso_buf[32], context_ids[128];
     time_t now = time_utils_get_now();
@@ -272,6 +273,10 @@ static esp_err_t step_b1_classify(const char *user_message,
     *out_confidence = (float)json_get_double(parsed, "confidence", 0.0);
 
     ESP_LOGI(TAG, "B1: intent=%s, confidence=%.2f", intent_str, *out_confidence);
+    if (out_b1_json != NULL) {
+        *out_b1_json = cJSON_Print(parsed);
+    }
+
     cJSON_Delete(parsed);
 
     return ESP_OK;
@@ -392,7 +397,9 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     action_type_t intent = ACTION_UNKNOWN;
     float confidence = 0.0f;
 
-    esp_err_t err = step_b1_classify(user_message, &intent, &confidence);
+    char *b1_json = NULL;
+
+    esp_err_t err = step_b1_classify(user_message, &intent, &confidence, &b1_json);
     if (err != ESP_OK) {
         snprintf(response_buffer, buffer_size,
             "\xE2\x9A\xA0\xEF\xB8\x8F Lỗi kết nối AI. Vui lòng thử lại sau.");
@@ -401,6 +408,10 @@ esp_err_t action_dispatcher_handle(const char *user_message,
 
     /* Kiểm tra confidence */
     if (confidence < 0.8f || intent == ACTION_UNKNOWN) {
+        if (b1_json != NULL) {
+            snprintf(s_last_action_json, sizeof(s_last_action_json), "【B1 Intent】\n%s\n\n【B2 Parse】\n(không thực hiện do confidence thấp)", b1_json);
+            free(b1_json);
+        }
         snprintf(response_buffer, buffer_size,
             "\xE2\x9D\x93 Tôi không chắc chắn hiểu yêu cầu này (%.0f%%). "
             "Bạn có thể nói rõ hơn được không?\n\n"
@@ -416,15 +427,26 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     char *data_json = NULL;
     err = step_b2_parse(intent, user_message, &data_json);
     if (err != ESP_OK) {
+        if (b1_json != NULL) {
+            snprintf(s_last_action_json, sizeof(s_last_action_json), "【B1 Intent】\n%s\n\n【B2 Parse】\n(Lỗi)", b1_json);
+            free(b1_json);
+        }
         snprintf(response_buffer, buffer_size,
             "\xE2\x9A\xA0\xEF\xB8\x8F Không phân tích được yêu cầu. Vui lòng thử lại.");
         return err;
     }
 
     /* Lưu JSON cuối cùng để hỗ trợ lệnh /last */
-    if (data_json != NULL) {
-        strncpy(s_last_action_json, data_json, sizeof(s_last_action_json) - 1);
-        s_last_action_json[sizeof(s_last_action_json) - 1] = '\0';
+    if (b1_json != NULL || data_json != NULL) {
+        snprintf(s_last_action_json, sizeof(s_last_action_json), 
+                 "【B1 Intent】\n%s\n\n【B2 Parse】\n%s", 
+                 b1_json ? b1_json : "(null)", 
+                 data_json ? data_json : "(null)");
+    }
+    
+    if (b1_json != NULL) {
+        free(b1_json);
+        b1_json = NULL;
     }
 
     /* CHITCHAT: Xử lý gợi ý từ B2 */

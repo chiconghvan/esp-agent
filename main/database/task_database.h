@@ -161,6 +161,16 @@ esp_err_t task_database_query_due_reminders(task_record_t *results, int max_resu
 const task_index_t *task_database_get_index(void);
 
 /**
+ * @brief Kiểm tra và cập nhật các task đã quá hạn (từ pending sang overdue)
+ * 
+ * Lặp qua index, nếu task đang pending mà due_time < now thì chuyển sang overdue.
+ * Cập nhật cả file task và index file.
+ *
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t task_database_update_overdue(void);
+
+/**
  * @brief Lưu index xuống SPIFFS (gọi sau khi có thay đổi)
  *
  * @return esp_err_t ESP_OK nếu thành công
