@@ -1,6 +1,6 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh v1.1.4
+# ESP-Agent: Trợ lý nhắc việc thông minh v2.0.1
 
-> Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306.
+> Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306 + Firebase Cloud Sync.
 
 ---
 
@@ -15,6 +15,8 @@
     - Nhấn nút BOOT: Cuộn xem các deadline tiếp theo.
     - Giữ nút BOOT (5 giây): Xóa cài đặt WiFi và khởi động lại.
 - **Nhắc nhở đa kênh**: Thông báo đồng thời qua Telegram và hiển thị ALERT nhấp nháy trên màn hình OLED.
+- **Firebase Cloud Sync**: Tự động đồng bộ dữ liệu lên Firebase Realtime Database. Khôi phục dữ liệu tự động khi đổi thiết bị (Pull on Boot).
+- **Tính năng Hoàn tác (Undo)**: Cho phép hoàn tác nhanh thao tác Thêm/Sửa/Xóa/Hoàn thành cuối cùng thông qua nút bấm trên Telegram.
 
 ---
 
@@ -44,6 +46,7 @@
    - `WIFI_SSID`, `WIFI_PASSWORD`
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `OPENAI_API_KEY`
+   - `FIREBASE_HOST`, `FIREBASE_AUTH` (Database Secret)
 
 ### Bước 2: Build & Flash
 Sử dụng môi trường **ESP-IDF** (v5.x):
@@ -91,6 +94,6 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 Dự án được phát hành dưới giấy phép **MIT**. Mọi đóng góp xin vui lòng tạo Pull Request hoặc Issue trên GitHub.
 
 ---
-**Phiên bản:** v1.1.0  
+**Phiên bản:** v2.0.1  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-05
+**Cập nhật cuối:** 2026-03-06
