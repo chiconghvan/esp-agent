@@ -394,7 +394,7 @@ void display_show_result(const char *action, uint32_t task_id, const char *title
  * Show Alert (không đổi)
  * ========================================================================== */
 void display_show_alert(uint32_t task_id, const char *title,
-                        const char *due_str, int days_left)
+                        const char *due_str, int32_t seconds_left)
 {
     ssd1306_clear();
 
@@ -430,14 +430,18 @@ void display_show_alert(uint32_t task_id, const char *title,
     snprintf(due_line, sizeof(due_line), "Han: %s", due_str ? due_str : "??");
     ssd1306_draw_string(2, 40, due_line, false);
 
-    /* Số ngày còn lại */
+    /* Số ngày/giờ còn lại */
     char status_line[64];
-    if (days_left <= 0) {
+    if (seconds_left < 0) {
         snprintf(status_line, sizeof(status_line), "DA QUA HAN!");
-    } else if (days_left == 1) {
-        snprintf(status_line, sizeof(status_line), "Con 1 ngay");
+    } else if (seconds_left < 3600) {
+        snprintf(status_line, sizeof(status_line), "Han: < 1 GIO!");
+    } else if (seconds_left < 86400) {
+        snprintf(status_line, sizeof(status_line), "Con %ld gio", (long)(seconds_left / 3600));
     } else {
-        snprintf(status_line, sizeof(status_line), "Con %d ngay", days_left);
+        int days = seconds_left / 86400;
+        if (days == 1) snprintf(status_line, sizeof(status_line), "Con 1 ngay");
+        else snprintf(status_line, sizeof(status_line), "Con %d ngay", days);
     }
     ssd1306_draw_string(2, 52, status_line, false);
 

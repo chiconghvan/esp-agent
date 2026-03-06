@@ -73,7 +73,7 @@ static void reminder_task(void *arg)
                 if (telegram_bot_send_default(msg) == ESP_OK) {
                     struct tm tm_due; localtime_r(&query_results[i].due_time, &tm_due);
                     char ds[32]; snprintf(ds, sizeof(ds), "%02d:%02d %02d/%02d", tm_due.tm_hour, tm_due.tm_min, tm_due.tm_mday, tm_due.tm_mon + 1);
-                    display_show_alert(query_results[i].id, query_results[i].title, ds, hours / 24);
+                    display_show_alert(query_results[i].id, query_results[i].title, ds, (int32_t)remaining);
                     query_results[i].reminder = query_results[i].due_time;
                     task_database_update(&query_results[i]);
                 }

@@ -49,7 +49,7 @@ void display_show_result(const char *action, uint32_t task_id, const char *title
  * @param days_left Số ngày còn lại
  */
 void display_show_alert(uint32_t task_id, const char *title,
-                        const char *due_str, int days_left);
+                        const char *due_str, int32_t seconds_left);
 
 /**
  * @brief Task FreeRTOS chạy nền, quản lý timeout quay về Idle
