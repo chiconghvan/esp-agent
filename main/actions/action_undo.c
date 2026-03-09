@@ -93,7 +93,7 @@ static esp_err_t restore_task_and_update_embedding(const task_record_t *old_task
 esp_err_t action_undo_execute(char *response, size_t buffer_size)
 {
     if (!action_undo_is_available()) {
-        snprintf(response, buffer_size, "⚠️ Không có thao tác nào để hoàn tác (hoặc đã quá hạn).");
+        snprintf(response, buffer_size, "⚠️ <b>Không có thao tác nào để hoàn tác</b> (hoặc đã quá hạn).");
         return ESP_FAIL;
     }
 
@@ -171,7 +171,7 @@ esp_err_t action_undo_execute(char *response, size_t buffer_size)
     action_undo_clear();
 
     if (success_count > 0) {
-        snprintf(response, buffer_size, "↩️ Đã hoàn tác thành công %d thao tác.", success_count);
+        snprintf(response, buffer_size, "↩️ <b>Đã hoàn tác thành công %d thao tác.</b>", success_count);
         display_show_result("Hoan tac", last_id, "Thanh cong");
         return ESP_OK;
     } else {

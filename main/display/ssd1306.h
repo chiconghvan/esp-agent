@@ -45,6 +45,9 @@ void ssd1306_draw_string_wrapped(int x, int y, int max_width, const char *str, b
 void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted);
 void ssd1306_draw_string_6x8(int x, int y, const char *str, bool inverted);
 
+/** Vẽ Wifi Icon 11x8 */
+void ssd1306_draw_wifi_icon(int x, int y, int level, bool inverted);
+
 /** Vẽ font 4x6 (cho thử nghiệm) */
 void ssd1306_draw_char_4x6(int x, int y, char c, bool inverted);
 void ssd1306_draw_string_4x6(int x, int y, const char *str, bool inverted);

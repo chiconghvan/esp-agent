@@ -42,4 +42,9 @@ esp_err_t wifi_manager_start_sntp(void);
  */
 bool wifi_manager_is_connected(void);
 
+/**
+ * @brief Lấy mức độ tín hiệu WiFi (0-3)
+ */
+int wifi_manager_get_level(void);
+
 #endif /* WIFI_MANAGER_H */

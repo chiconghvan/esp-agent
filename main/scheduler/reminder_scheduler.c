@@ -117,7 +117,7 @@ static void reminder_task(void *arg)
             int od_count = 0;
             if (task_database_query_by_time(1, now, NULL, "overdue", query_results, MAX_QUERY_RESULTS, &od_count) == ESP_OK && od_count > 0) {
                 char rep[RESPONSE_BUFFER_SIZE];
-                int w = snprintf(rep, sizeof(rep), "⏳ **NHẮC NHỞ 16:00**\nBạn còn %d việc quá hạn chưa xong:\n", od_count);
+                int w = snprintf(rep, sizeof(rep), "⏳ <b>NHẮC NHỞ 16:00</b>\nBạn còn %d việc quá hạn chưa xong:\n", od_count);
                 for (int j = 0; j < od_count && w < sizeof(rep) - 100; j++)
                     w += snprintf(rep + w, sizeof(rep) - w, "\n%d. [#%lu] %s", j+1, (unsigned long)query_results[j].id, query_results[j].title);
                 strncat(rep, "\n\n💪 Cố gắng hoàn thành nhé!", sizeof(rep) - strlen(rep) - 1);
@@ -133,7 +133,7 @@ static void reminder_task(void *arg)
             int today_count = 0;
             if (task_database_query_by_time(today.start, today.end, NULL, "pending", query_results, MAX_QUERY_RESULTS, &today_count) == ESP_OK && today_count > 0) {
                 char brief[RESPONSE_BUFFER_SIZE];
-                int w = snprintf(brief, sizeof(brief), "☀️ **CHÀO BUỔI SÁNG!**\nHôm nay bạn có %d việc cần xử lý:\n", today_count);
+                int w = snprintf(brief, sizeof(brief), "☀️ <b>CHÀO BUỔI SÁNG!</b>\nHôm nay bạn có %d việc cần xử lý:\n", today_count);
                 for (int j = 0; j < today_count && w < sizeof(brief) - 100; j++)
                     w += snprintf(brief + w, sizeof(brief) - w, "\n%d. [#%lu] %s", j+1, (unsigned long)query_results[j].id, query_results[j].title);
                 

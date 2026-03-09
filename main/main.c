@@ -145,13 +145,8 @@ static void telegram_polling_loop(void)
             } else if (strcmp(message.callback_query, "cmd_undo") == 0) {
                 /* Xử lý nút Undo */
                 memset(response, 0, sizeof(response));
-                if (action_undo_execute(response, sizeof(response)) == ESP_OK) {
-                    /* Thành công thì gửi thông báo */
-                    telegram_bot_send_message(message.chat_id, response);
-                } else {
-                    /* Thất bại cũng báo lỗi */
-                    telegram_bot_send_message(message.chat_id, response);
-                }
+                action_undo_execute(response, sizeof(response));
+                telegram_bot_send_message(message.chat_id, response);
             }
             continue;
         }
@@ -179,7 +174,11 @@ static void telegram_polling_loop(void)
                 snprintf(response, sizeof(response), "⚠️ Lỗi: Không đủ RAM để hiển thị JSON.");
             }
         } else if (strcmp(message.text, "/v") == 0) {
-            snprintf(response, sizeof(response), "🏷️ **Firmware Version:** %s\n🔧 Target: ESP32-C3 Super Mini", FIRMWARE_VERSION);
+            snprintf(response, sizeof(response), "🏷️ <b>Firmware Version:</b> %s\n🔧 <i>Target:</i> ESP32-C3 Super Mini", FIRMWARE_VERSION);
+        } else if (strcmp(message.text, "/undo") == 0) {
+            /* Lệnh /undo thủ công */
+            memset(response, 0, sizeof(response));
+            action_undo_execute(response, sizeof(response));
         } else if (strcmp(message.text, "/deadline") == 0) {
             time_range_t range = time_utils_get_three_day_range();
             task_record_t *results = (task_record_t *)calloc(10, sizeof(task_record_t));
@@ -187,11 +186,11 @@ static void telegram_polling_loop(void)
             if (results) {
                 task_database_query_by_time(range.start, range.end, NULL, "pending", results, 10, &found);
                 if (found > 0) {
-                    int w = snprintf(response, sizeof(response), "📅 **DEADLINE**\n");
+                    int w = snprintf(response, sizeof(response), "📅 <b>DEADLINE</b>\n");
                     for (int j = 0; j < found; j++) {
                         char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
                         w += snprintf(response + w, (sizeof(response) > (size_t)w) ? (sizeof(response) - w) : 0, 
-                                      "\n• [#%lu] %s (%s)", (unsigned long)results[j].id, results[j].title, db);
+                                      "\n• <b>[#%" PRIu32 "] %s</b> (<i>%s</i>)", results[j].id, results[j].title, db);
                     }
                 } else {
                     snprintf(response, sizeof(response), "✅ Hiện không có deadline nào sắp tới.");
@@ -244,15 +243,15 @@ static void telegram_polling_loop(void)
                             time_utils_format_repeat(task.repeat, task.repeat_interval, repeat_buf, sizeof(repeat_buf));
 
                             written += snprintf(response + written, sizeof(response) - written,
-                                "📌 [#%lu] %s\n"
-                                "🏷️ Phân loại: %s\n"
-                                "📅 Thời hạn: %s\n"
-                                "🔁 Lặp lại: %s\n"
-                                "🕐 Tạo lúc: %s\n"
-                                "⏰ Nhắc nhở: %s\n"
-                                "📝 Ghi chú: %s\n"
-                                "🔵 Trạng thái: %s",
-                                (unsigned long)task.id, task.title,
+                                "📌 <b>[#%" PRIu32 "] %s</b>\n"
+                                "<i>🏷️ Phân loại:</i> %s\n"
+                                "<i>📅 Thời hạn:</i> %s\n"
+                                "<i>🔁 Lặp lại:</i> %s\n"
+                                "<i>🕐 Tạo lúc:</i> %s\n"
+                                "<i>⏰ Nhắc nhở:</i> %s\n"
+                                "<i>📝 Ghi chú:</i> %s\n"
+                                "🔵 <i>Trạng thái:</i> %s",
+                                task.id, task.title,
                                 (strcmp(task.type, "meeting") == 0) ? "Cuộc họp" :
                                 (strcmp(task.type, "report") == 0) ? "Báo cáo" :
                                 (strcmp(task.type, "reminder") == 0) ? "Nhắc nhở" :
@@ -299,18 +298,7 @@ static void telegram_polling_loop(void)
 
         /* Gửi response về Telegram */
         if (strlen(response) > 0) {
-            /* Kiểm tra xem có thao tác nào vừa thực hiện có thể undo không */
-            if (action_undo_is_available()) {
-                err = telegram_bot_send_inline_keyboard(message.chat_id, response, "↩️ Hoàn tác (Undo)", "cmd_undo");
-                // Sau khi đã trình bày tuỳ chọn undo cho user trong tin nhắn hiện tại
-                // Chúng ta clear trạng thái để các tin nhắn truy vấn tiếp theo không bị dính nút undo nữa
-                // Chỉ valid cho ngay sau hành động mutation (ngay tại tick này)
-                // Lưu ý: Nếu user nhắn thêm 1 tin khác, undo.bin vẫn còn đó đến khi user ấn undo hoặc thao tác đè lên
-                // Tuy nhiên về UI, ta chỉ hiện nút ở tin nhắn phản hồi trực tiếp của mutation
-            } else {
-                err = telegram_bot_send_message(message.chat_id, response);
-            }
-
+            err = telegram_bot_send_message(message.chat_id, response);
             if (err == ESP_OK) {
                 ESP_LOGI(TAG, "<<< Đã gửi response");
             } else {

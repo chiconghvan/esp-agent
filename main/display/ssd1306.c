@@ -185,15 +185,15 @@ void ssd1306_draw_string(int x, int y, const char *str, bool inverted)
 }
 
 /* --------------------------------------------------------------------------
- * Vẽ ký tự 6x8 (Dày hơn)
+ * Vẽ ký tự 6x8 (Font Adafruit GFX Classic)
  * -------------------------------------------------------------------------- */
 void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted)
 {
-    if (c < 32 || c > 126) c = '?';
-    int idx = c - 32;
+    uint8_t idx = (uint8_t)c;
 
     for (int col = 0; col < 6; col++) {
         uint8_t line = font6x8[idx][col];
+        
         for (int row = 0; row < 8; row++) {
             bool pixel = (line >> row) & 1;
             if (inverted) pixel = !pixel;
@@ -201,6 +201,38 @@ void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted)
         }
     }
 }
+
+/* --------------------------------------------------------------------------
+ * Vẽ Wi-Fi Icon (11x8) theo cường độ tín hiệu
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_wifi_icon(int x, int y, int level, bool inverted)
+{
+    /* 11 columns, 8 rows (LSB = top) */
+    /* Level 3: Dot + 2 Arcs */
+    const uint8_t wifi_lvl3[11] = { 0x04, 0x02, 0x12, 0x0A, 0x4A, 0xCA, 0x4A, 0x0A, 0x12, 0x02, 0x04 };
+    /* Level 2: Dot + 1 Arc */
+    const uint8_t wifi_lvl2[11] = { 0x00, 0x00, 0x10, 0x08, 0x48, 0xC8, 0x48, 0x08, 0x10, 0x00, 0x00 };
+    /* Level 1: Dot only */
+    const uint8_t wifi_lvl1[11] = { 0x00, 0x00, 0x00, 0x00, 0x40, 0xC0, 0x40, 0x00, 0x00, 0x00, 0x00 };
+    /* Level 0: Disconnected (!) */
+    const uint8_t wifi_lvl0[11] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x5E, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+    const uint8_t *bmp;
+    if (level >= 3) bmp = wifi_lvl3;
+    else if (level == 2) bmp = wifi_lvl2;
+    else if (level == 1) bmp = wifi_lvl1;
+    else bmp = wifi_lvl0;
+
+    for (int col = 0; col < 11; col++) {
+        uint8_t line = bmp[col];
+        for (int row = 0; row < 8; row++) {
+            bool pixel = (line >> row) & 1;
+            if (inverted) pixel = !pixel;
+            ssd1306_draw_pixel(x + col, y + row, pixel);
+        }
+    }
+}
+
 
 /* --------------------------------------------------------------------------
  * Vẽ chuỗi font 6x8

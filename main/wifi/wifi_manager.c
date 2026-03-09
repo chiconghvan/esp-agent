@@ -323,3 +323,14 @@ esp_err_t wifi_manager_start_sntp(void)
 bool wifi_manager_is_connected(void) {
     return is_connected;
 }
+
+int wifi_manager_get_level(void) {
+    if (!is_connected) return 0;
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        if (ap.rssi > -60) return 3;
+        if (ap.rssi > -75) return 2;
+        return 1;
+    }
+    return 0;
+}

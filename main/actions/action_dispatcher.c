@@ -430,16 +430,16 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     /* Kiểm tra confidence */
     if (confidence < 0.8f || intent == ACTION_UNKNOWN) {
         if (b1_json != NULL) {
-            snprintf(s_last_action_json, sizeof(s_last_action_json), "【B1 Intent】\n%s\n\n【B2 Parse】\n(không thực hiện do confidence thấp)", b1_json);
+            snprintf(s_last_action_json, sizeof(s_last_action_json), "<b>【B1 Intent】</b>\n<code>%s</code>\n\n<b>【B2 Parse】</b>\n<i>(không thực hiện do confidence thấp)</i>", b1_json);
             free(b1_json);
         }
         snprintf(response_buffer, buffer_size,
-            "\xE2\x9D\x93 Tôi không chắc chắn hiểu yêu cầu này (%.0f%%). "
+            "❓ <b>Tôi không chắc chắn hiểu yêu cầu này (%.0f%%).</b>\n"
             "Bạn có thể nói rõ hơn được không?\n\n"
-            "\xF0\x9F\x92\xA1 Ví dụ:\n"
-            "\xE2\x80\xA2 \"Nhắc tôi nộp báo cáo ngày 31/3\"\n"
-            "\xE2\x80\xA2 \"Tuần này có gì?\"\n"
-            "\xE2\x80\xA2 \"Hoàn thành task báo cáo\"",
+            "💡 <i>Ví dụ:</i>\n"
+            "• \"Nhắc tôi nộp báo cáo ngày 31/3\"\n"
+            "• \"Tuần này có gì?\"\n"
+            "• \"Hoàn thành task báo cáo\"",
             confidence * 100);
         return ESP_OK;
     }

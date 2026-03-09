@@ -51,8 +51,7 @@ static TickType_t s_last_btn_tick = 0;
 
 typedef struct {
     char id_str[8];        /* "#3"                   */
-    char title_l1[48];     /* Dòng 1 tiêu đề (ASCII) - Mở rộng để chứa nhiều ký tự hơn */
-    char title_l2[48];     /* Dòng 2 tiêu đề         */
+    char title_lines[3][48]; /* 3 dòng tiêu đề (ASCII) */
     char due_str[32];      /* "Han: 15:00 hom nay"   */
 } carousel_item_t;
 
@@ -135,33 +134,48 @@ static int find_split_point(const char *s, int max_w, bool word_wrap)
     return i;
 }
 
-static void split_title(const char *title, int id_px, char *l1, int l1sz, char *l2, int l2sz)
+static void split_title(const char *title, int id_px, char lines[3][48], int xoff)
 {
-    int max_l1 = 128 - id_px;
+    /* max width is the screen width minus the starting x position */
+    int max_l1 = 128 - (id_px + xoff);
     if (max_l1 < 30) max_l1 = 30;
 
-    /* Dòng 1: Ưu tiên ngắt dòng đẹp (word-wrap = true) */
+    /* Dòng 1 */
     int split1 = find_split_point(title, max_l1, true);
-    int n1 = split1 < l1sz - 1 ? split1 : l1sz - 1;
-    memcpy(l1, title, n1); l1[n1] = '\0';
+    int n1 = split1 < 47 ? split1 : 47;
+    memcpy(lines[0], title, n1); lines[0][n1] = '\0';
 
     const char *rest = title + split1;
     while (*rest == ' ') rest++;
     
     if (*rest == '\0') {
-        l2[0] = '\0';
+        lines[1][0] = '\0';
+        lines[2][0] = '\0';
     } else {
-        /* Dòng 2: Nếu vừa thì hiển thị hết (word-wrap = true) */
-        int split2 = find_split_point(rest, 128, true);
-        if (rest[split2] == '\0') {
-            strncpy(l2, rest, l2sz - 1); l2[l2sz - 1] = '\0';
+        /* Dòng 2: starts at x = xoff */
+        int max_l2 = 128 - xoff;
+        int split2 = find_split_point(rest, max_l2, true);
+        int n2 = split2 < 47 ? split2 : 47;
+        memcpy(lines[1], rest, n2); lines[1][n2] = '\0';
+
+        rest += split2;
+        while (*rest == ' ') rest++;
+
+        if (*rest == '\0') {
+            lines[2][0] = '\0';
         } else {
-            /* Nếu quá dài: Cố gắng lấp đầy pixel (word-wrap = false) */
-            int dots_w = 12; // "..." = 3 * 4px = 12px
-            int cut_idx = find_split_point(rest, 128 - dots_w, false);
-            int n2 = cut_idx < l2sz - 4 ? cut_idx : l2sz - 4;
-            memcpy(l2, rest, n2); l2[n2] = '\0';
-            strcat(l2, "...");
+            /* Dòng 3: cố gắng lấp đầy pixel, thêm "..." nếu còn dư */
+            int max_l3 = 128 - xoff;
+            int split3 = find_split_point(rest, max_l3, true);
+            if (rest[split3] == '\0') {
+                strncpy(lines[2], rest, 47); lines[2][47] = '\0';
+            } else {
+                int dots_w = 12;
+                int cut_idx = find_split_point(rest, max_l3 - dots_w, false);
+                int n3 = cut_idx < 44 ? cut_idx : 44;
+                memcpy(lines[2], rest, n3); lines[2][n3] = '\0';
+                strcat(lines[2], "...");
+            }
         }
     }
 }
@@ -215,9 +229,8 @@ static void refresh_idle_data(void)
             char ascii[64];
             vn_strip_diacritics(ascii, tasks[i].title, sizeof(ascii));
             int id_px = (strlen(s_items[i].id_str) * 6) + 2; 
-            split_title(ascii, id_px,
-                        s_items[i].title_l1, sizeof(s_items[i].title_l1),
-                        s_items[i].title_l2, sizeof(s_items[i].title_l2));
+            /* offset x là 2px cho phần idle */
+            split_title(ascii, id_px, s_items[i].title_lines, 2);
             format_due(tasks[i].due_time, s_items[i].due_str, sizeof(s_items[i].due_str));
         }
         if (s_cur_idx >= count) s_cur_idx = 0;
@@ -232,38 +245,29 @@ static void refresh_idle_data(void)
  * ========================================================================== */
 static void draw_header(void)
 {
-    const char *title = " Nhac lich";
-    const char *sts = s_wifi_ok ? "Sts:OK" : "Sts:X";
-    
     /* Vẽ nền bar cao 10 pixel */
     ssd1306_fill_rect(0, 0, 128, 10, true);
     
-    /* Vẽ title bên trái */
-    ssd1306_draw_string(0, 1, title, true);
+    /* Bên trái: "Deadline" */
+    ssd1306_draw_string(2, 1, "Deadline", true);
     
-    /* Tính độ rộng sts để căn phải (font 5x7: ':' là 3px, c khác 6px) */
-    int sts_px = 0;
-    const char *p = sts;
-    while (*p) {
-        if (*p == ' ') sts_px += 3;
-        else if (*p == '.' || *p == ',' || *p == ':' || *p == ';') sts_px += 4;
-        else sts_px += 6;
-        p++;
-    }
+    /* Ở giữa: Thời gian hh:mm */
+    char time_str[8];
+    time_t now = time_utils_get_now();
+    struct tm ti;
+    localtime_r(&now, &ti);
+    snprintf(time_str, sizeof(time_str), "%02d:%02d", ti.tm_hour, ti.tm_min);
     
-    /* Vẽ sts bên phải (cách lề phải 2px) */
-    ssd1306_draw_string(128 - sts_px - 2, 1, sts, true);
+    /* Căn giữa hh:mm trong khoảng trống còn lại giữa "Deadline" và WiFi */
+    /* Deadline (0-48), WiFi (115-128) -> Center gap ≈ 81 -> Start at 81-15=66 or 65 */
+    ssd1306_draw_string(65, 1, time_str, true);
+    
+    /* Bên phải: Biểu tượng Wi-Fi (11x8) theo cấp độ tín hiệu */
+    int wifi_level = wifi_manager_get_level();
+    ssd1306_draw_wifi_icon(115, 1, wifi_level, true);
 }
 
-static void draw_dl_count(void)
-{
-    char line[32];
-    snprintf(line, sizeof(line), "Deadline: %d", s_dl_count);
-    /* Deadline sử dụng font 6x8 chuẩn (không in đậm) */
-    ssd1306_draw_string_6x8(2, 13, line, false);
-    /* Đường gạch ngang phân cách */
-    ssd1306_draw_hline(0, 23, 128);
-}
+/* draw_dl_count removed as per user request */
 
 /** Vẽ nội dung 1 task tại x_offset (dùng cho animation) */
 static void draw_task_content(int idx, int xoff)
@@ -271,19 +275,21 @@ static void draw_task_content(int idx, int xoff)
     if (idx < 0 || idx >= s_dl_count) return;
     const carousel_item_t *it = &s_items[idx];
 
-    /* #ID hiển thị bằng font 5x7 */
-    ssd1306_draw_string(xoff, 28, it->id_str, false);
+    /* Dòng 1: #ID + Title L1 */
+    ssd1306_draw_string(xoff, 14, it->id_str, false);
+    int id_px = (strlen(it->id_str) * 6) + 2; 
+    ssd1306_draw_string_6x8(xoff + id_px, 14, it->title_lines[0], false);
 
-    /* Tiêu đề Task Line 1 (Dùng 6x8, lệch sang phải sau ID) */
-    int id_px = (strlen(it->id_str) * 6) + 2; // Độ rộng ID trong font 5x7 + gap nhỏ
-    ssd1306_draw_string_6x8(xoff + id_px, 28, it->title_l1, false);
+    /* Dòng 2: Title L2 */
+    if (it->title_lines[1][0])
+        ssd1306_draw_string_6x8(xoff, 24, it->title_lines[1], false);
 
-    /* Tiêu đề Task Line 2 (Dùng 6x8) */
-    if (it->title_l2[0])
-        ssd1306_draw_string_6x8(xoff, 38, it->title_l2, false);
+    /* Dòng 3: Title L3 */
+    if (it->title_lines[2][0])
+        ssd1306_draw_string_6x8(xoff, 34, it->title_lines[2], false);
 
-    /* Due time (Dùng 6x8) */
-    ssd1306_draw_string_6x8(xoff, 48, it->due_str, false);
+    /* Dòng 4: Due time */
+    ssd1306_draw_string_6x8(xoff, 46, it->due_str, false);
 }
 
 /** Vẽ chấm chỉ thị vị trí carousel */
@@ -314,7 +320,7 @@ static void render_idle(void)
 {
     ssd1306_clear();
     draw_header();
-    draw_dl_count();
+    /* draw_dl_count removed */
 
     if (s_dl_count > 0) {
         draw_task_content(s_cur_idx, 2);
@@ -343,7 +349,7 @@ static void slide_to_next(void)
 
         ssd1306_clear();
         draw_header();
-        draw_dl_count();
+        /* draw_dl_count removed */
 
         /* Nội dung cũ trượt ra trái */
         draw_task_content(old_idx, 2 - shift);
@@ -409,18 +415,17 @@ void display_show_alert(uint32_t task_id, const char *title,
     char ascii_title[64];
     vn_strip_diacritics(ascii_title, title, sizeof(ascii_title));
 
-    char l1[24], l2[24];
-    split_title(ascii_title, id_indent, l1, sizeof(l1), l2, sizeof(l2));
+    char lines[3][48];
+    split_title(ascii_title, id_indent, lines, 2);
 
     /* Vẽ Task ID + Title dòng 1 */
-    char combined[48];
-    snprintf(combined, sizeof(combined), "%s %s", id_str, l1);
+    char combined[64];
+    snprintf(combined, sizeof(combined), "%s %s", id_str, lines[0]);
     ssd1306_draw_string(2, 13, combined, false);
 
-    /* Title dòng 2 */
-    if (l2[0]) {
-        ssd1306_draw_string(2, 23, l2, false);
-    }
+    /* Dòng 2 & 3 */
+    if (lines[1][0]) ssd1306_draw_string(2, 23, lines[1], false);
+    if (lines[2][0]) ssd1306_draw_string(2, 33, lines[2], false);
 
     /* Gạch ngang phân cách */
     ssd1306_draw_hline(0, 34, 128);

@@ -78,7 +78,9 @@ static esp_err_t http_put_task(const task_record_t *task)
         .url = url,
         .method = HTTP_METHOD_PUT,
         .timeout_ms = 10000,
-        .crt_bundle_attach = esp_crt_bundle_attach, // TLS bundle
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .buffer_size = 1024,
+        .buffer_size_tx = 1024,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -132,6 +134,8 @@ static esp_err_t http_delete_task(uint32_t task_id)
         .method = HTTP_METHOD_DELETE,
         .timeout_ms = 10000,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .buffer_size = 512,
+        .buffer_size_tx = 512,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -174,8 +178,8 @@ static void firebase_sync_task(void *pvParameters)
                 http_delete_task(msg.task_id);
             }
             
-            // Delay nhỏ xíu tránh spam host
-            vTaskDelay(pdMS_TO_TICKS(500));
+            // Delay lớn hơn (2 giây) để hệ thống thở giữa các lần SSL handshake
+            vTaskDelay(pdMS_TO_TICKS(2000));
         }
     }
 }
@@ -192,8 +196,8 @@ esp_err_t firebase_sync_init(void)
             return ESP_FAIL;
         }
 
-        // Tạo background task (Stack 6KB)
-        xTaskCreate(firebase_sync_task, "firebase_sync_task", 6144, NULL, 5, NULL);
+        // Tạo background task (Tăng lên 8KB để SSL an toàn hơn trên ESP-IDF 5)
+        xTaskCreate(firebase_sync_task, "firebase_sync_task", 8192, NULL, 5, NULL);
         ESP_LOGI(TAG, "Firebase Sync Background Task Started");
     }
     return ESP_OK;
