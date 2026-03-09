@@ -59,6 +59,13 @@ static carousel_item_t s_items[MAX_DL_TASKS];
 static int s_dl_count = 0;     /* Số deadline tasks    */
 static int s_cur_idx  = 0;     /* Index hiện tại       */
 static bool s_wifi_ok = true;
+static int s_wifi_level = 0;
+
+typedef enum {
+    VIEW_MODE_DEADLINE,
+    VIEW_MODE_TODAY
+} carousel_view_mode_t;
+static carousel_view_mode_t s_view_mode = VIEW_MODE_DEADLINE;
 
 /* ==========================================================================
  * Button ISR + init
@@ -209,6 +216,10 @@ static void refresh_idle_data(void)
     time_t today_start = mktime(&ti_now);
     time_t dl_end = today_start + (3 * 86400);
 
+    if (s_view_mode == VIEW_MODE_TODAY) {
+        dl_end = today_start + 86400 - 1; /* Hết ngày hôm nay */
+    }
+
     static task_record_t tasks[MAX_DL_TASKS];
     int count = 0;
 
@@ -248,8 +259,8 @@ static void draw_header(void)
     /* Vẽ nền bar cao 10 pixel */
     ssd1306_fill_rect(0, 0, 128, 10, true);
     
-    /* Bên trái: "Deadline" */
-    ssd1306_draw_string(2, 1, "Deadline", true);
+    /* Bên trái: "Deadline" hoặc "Today" */
+    ssd1306_draw_string(2, 1, s_view_mode == VIEW_MODE_DEADLINE ? "Deadline" : "Today   ", true);
     
     /* Ở giữa: Thời gian hh:mm */
     char time_str[8];
@@ -263,8 +274,7 @@ static void draw_header(void)
     ssd1306_draw_string(65, 1, time_str, true);
     
     /* Bên phải: Biểu tượng Wi-Fi (11x8) theo cấp độ tín hiệu */
-    int wifi_level = wifi_manager_get_level();
-    ssd1306_draw_wifi_icon(115, 1, wifi_level, true);
+    ssd1306_draw_wifi_icon(115, 1, s_wifi_level, true);
 }
 
 /* draw_dl_count removed as per user request */
@@ -278,18 +288,18 @@ static void draw_task_content(int idx, int xoff)
     /* Dòng 1: #ID + Title L1 */
     ssd1306_draw_string(xoff, 14, it->id_str, false);
     int id_px = (strlen(it->id_str) * 6) + 2; 
-    ssd1306_draw_string_6x8(xoff + id_px, 14, it->title_lines[0], false);
+    ssd1306_draw_string(xoff + id_px, 14, it->title_lines[0], false);
 
     /* Dòng 2: Title L2 */
     if (it->title_lines[1][0])
-        ssd1306_draw_string_6x8(xoff, 24, it->title_lines[1], false);
+        ssd1306_draw_string(xoff, 24, it->title_lines[1], false);
 
     /* Dòng 3: Title L3 */
     if (it->title_lines[2][0])
-        ssd1306_draw_string_6x8(xoff, 34, it->title_lines[2], false);
+        ssd1306_draw_string(xoff, 34, it->title_lines[2], false);
 
     /* Dòng 4: Due time */
-    ssd1306_draw_string_6x8(xoff, 46, it->due_str, false);
+    ssd1306_draw_string(xoff, 46, it->due_str, false);
 }
 
 /** Vẽ chấm chỉ thị vị trí carousel */
@@ -342,7 +352,7 @@ static void slide_to_next(void)
     int new_idx = (s_cur_idx + 1) % s_dl_count;
 
     #define ANIM_STEPS  6
-    #define ANIM_DELAY  25   /* ms mỗi frame */
+    #define ANIM_DELAY  5   /* ms mỗi frame */
 
     for (int step = 1; step <= ANIM_STEPS; step++) {
         int shift = (step * 128) / ANIM_STEPS;
@@ -481,20 +491,28 @@ void display_show_idle(void)
 static void display_task(void *arg)
 {
     TickType_t last_idle_refresh = 0;
+    TickType_t last_wifi_check = 0;
 
     while (1) {
-        s_wifi_ok = wifi_manager_is_connected();
         TickType_t now = xTaskGetTickCount();
+
+        /* Update WiFi status periodically to avoid blocking animation */
+        if (last_wifi_check == 0 || (now - last_wifi_check) * portTICK_PERIOD_MS >= 2000) {
+            s_wifi_ok = wifi_manager_is_connected();
+            s_wifi_level = wifi_manager_get_level();
+            last_wifi_check = now;
+        }
+
         uint32_t elapsed = (now - s_state_start) * portTICK_PERIOD_MS;
 
         /* ── Xử lý nút BOOT ── */
         if (s_btn_pressed) {
             s_btn_pressed = false;
-            
-            TickType_t press_start = now;
-            bool long_pressed = false;
+            TickType_t current_tick = xTaskGetTickCount();
 
             /* Check long press >= 5s */
+            TickType_t press_start = current_tick;
+            bool long_pressed = false;
             while (gpio_get_level(BOOT_BTN_GPIO) == 0) {
                 if ((xTaskGetTickCount() - press_start) * portTICK_PERIOD_MS >= 5000) {
                     long_pressed = true;
@@ -515,14 +533,42 @@ static void display_task(void *arg)
                 vTaskDelay(pdMS_TO_TICKS(50));
             }
 
-            if (!long_pressed && (now - s_last_btn_tick) * portTICK_PERIOD_MS >= DEBOUNCE_MS) {
-                s_last_btn_tick = now;
-                if (s_state == SCREEN_IDLE && s_dl_count > 1) {
-                    ESP_LOGI(TAG, "Button → slide %d→%d",
-                             s_cur_idx, (s_cur_idx + 1) % s_dl_count);
-                    slide_to_next();
+            /* Lọc rung & kiểm tra double click */
+            if (!long_pressed && (current_tick - s_last_btn_tick) * portTICK_PERIOD_MS >= 50) {
+                bool is_double_click = false;
+                TickType_t wait_start = xTaskGetTickCount();
+                s_btn_pressed = false; /* Xóa cờ nảy thả nút */
+
+                /* Chờ 250ms xem có ấn tiếp không */
+                while ((xTaskGetTickCount() - wait_start) * portTICK_PERIOD_MS <= 150) {
+                    if (s_btn_pressed || gpio_get_level(BOOT_BTN_GPIO) == 0) {
+                        is_double_click = true;
+                        /* Đợi nhả nút cho click 2 */
+                        while (gpio_get_level(BOOT_BTN_GPIO) == 0) vTaskDelay(pdMS_TO_TICKS(10));
+                        break;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                }
+
+                s_last_btn_tick = xTaskGetTickCount();
+                
+                if (is_double_click) {
+                    ESP_LOGI(TAG, "Double click detected");
+                    s_view_mode = (s_view_mode == VIEW_MODE_DEADLINE) ? VIEW_MODE_TODAY : VIEW_MODE_DEADLINE;
+                    if (s_state == SCREEN_IDLE) {
+                        s_cur_idx = 0;
+                        refresh_idle_data();
+                        render_idle();
+                    }
+                } else {
+                    ESP_LOGI(TAG, "Single click detected");
+                    if (s_state == SCREEN_IDLE && s_dl_count > 1) {
+                        slide_to_next();
+                    }
                 }
             }
+            
+            s_btn_pressed = false; /* Clear nảy cuối */
         }
 
         /* ── State machine ── */
@@ -550,7 +596,7 @@ static void display_task(void *arg)
                 break;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));  /* 100ms để nút phản hồi nhanh */
+        vTaskDelay(pdMS_TO_TICKS(20));  /* 20ms để nút phản hồi rất nhanh */
     }
 }
 

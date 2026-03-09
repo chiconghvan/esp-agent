@@ -7,9 +7,7 @@
 
 #include "config.h"
 #include "ssd1306.h"
-#include "font5x7.h"
 #include "font6x8.h"
-#include "font4x6.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
 #include <string.h>
@@ -142,52 +140,9 @@ void ssd1306_draw_pixel(int x, int y, bool on)
 }
 
 /* --------------------------------------------------------------------------
- * Vẽ ký tự 5×7
+ * Vẽ ký tự
  * -------------------------------------------------------------------------- */
 void ssd1306_draw_char(int x, int y, char c, bool inverted)
-{
-    if (c < 32 || c > 126) c = '?';
-    int idx = c - 32;
-
-    for (int col = 0; col < 5; col++) {
-        uint8_t line = font5x7[idx][col];
-        for (int row = 0; row < 7; row++) {
-            bool pixel = (line >> row) & 1;
-            if (inverted) pixel = !pixel;
-            ssd1306_draw_pixel(x + col, y + row, pixel);
-        }
-        /* Inverted: fill pixel 7 (bottom of char cell) */
-        if (inverted) {
-            ssd1306_draw_pixel(x + col, y + 7, true);
-        }
-    }
-    /* Spacing column (1 pixel gap) */
-    for (int row = 0; row < 8; row++) {
-        ssd1306_draw_pixel(x + 5, y + row, inverted);
-    }
-}
-
-/* --------------------------------------------------------------------------
- * Vẽ chuỗi
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_string(int x, int y, const char *str, bool inverted)
-{
-    int cx = x;
-    while (*str) {
-        if (cx + 6 > SSD1306_WIDTH) break;
-        ssd1306_draw_char(cx, y, *str, inverted);
-        char c = *str;
-        if (c == ' ') cx += 3; 
-        else if (c == '.' || c == ',' || c == ':' || c == ';') cx += 4;
-        else cx += 6;
-        str++;
-    }
-}
-
-/* --------------------------------------------------------------------------
- * Vẽ ký tự 6x8 (Font Adafruit GFX Classic)
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted)
 {
     uint8_t idx = (uint8_t)c;
 
@@ -201,6 +156,27 @@ void ssd1306_draw_char_6x8(int x, int y, char c, bool inverted)
         }
     }
 }
+
+/* --------------------------------------------------------------------------
+ * Vẽ chuỗi
+ * -------------------------------------------------------------------------- */
+void ssd1306_draw_string(int x, int y, const char *str, bool inverted)
+{
+    int cx = x;
+    while (*str) {
+        char c = *str;
+        int char_w = 6;
+        if (c == ' ') char_w = 3;
+        else if (c == '.' || c == ',' || c == ':' || c == ';') char_w = 4;
+        
+        if (cx + char_w > SSD1306_WIDTH) break;
+        
+        ssd1306_draw_char(cx, y, c, inverted);
+        cx += char_w;
+        str++;
+    }
+}
+
 
 /* --------------------------------------------------------------------------
  * Vẽ Wi-Fi Icon (11x8) theo cường độ tín hiệu
@@ -234,61 +210,9 @@ void ssd1306_draw_wifi_icon(int x, int y, int level, bool inverted)
 }
 
 
-/* --------------------------------------------------------------------------
- * Vẽ chuỗi font 6x8
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_string_6x8(int x, int y, const char *str, bool inverted)
-{
-    int cx = x;
-    while (*str) {
-        char c = *str;
-        int char_w = 6;
-        if (c == ' ') char_w = 3;
-        else if (c == '.' || c == ',' || c == ':' || c == ';') char_w = 4;
-        
-        if (cx + char_w > SSD1306_WIDTH) break;
-        
-        ssd1306_draw_char_6x8(cx, y, c, inverted);
-        cx += char_w;
-        str++;
-    }
-}
 
 /* --------------------------------------------------------------------------
- * Vẽ ký tự 4x6
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_char_4x6(int x, int y, char c, bool inverted)
-{
-    if (c < 32 || c > 126) c = '?';
-    int idx = c - 32;
-
-    for (int col = 0; col < 4; col++) {
-        uint8_t line = font4x6[idx][col];
-        for (int row = 0; row < 6; row++) {
-            bool pixel = (line >> row) & 1;
-            if (inverted) pixel = !pixel;
-            ssd1306_draw_pixel(x + col, y + row, pixel);
-        }
-    }
-}
-
-/* --------------------------------------------------------------------------
- * Vẽ chuỗi font 4x6
- * -------------------------------------------------------------------------- */
-void ssd1306_draw_string_4x6(int x, int y, const char *str, bool inverted)
-{
-    int cx = x;
-    while (*str) {
-        if (cx + 4 > SSD1306_WIDTH) break;
-        ssd1306_draw_char_4x6(cx, y, *str, inverted);
-        if (*str == ' ') cx += 2; /* Giảm 1 nửa space (4 -> 2) */
-        else cx += 4;
-        str++;
-    }
-}
-
-/* --------------------------------------------------------------------------
- * Vẽ thanh ngang inverted với font nhỏ 4x6
+ * Vẽ thanh ngang inverted
  * -------------------------------------------------------------------------- */
 void ssd1306_draw_inverted_bar(int page_y, const char *text)
 {
