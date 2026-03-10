@@ -30,7 +30,6 @@ typedef enum {
 typedef struct {
     sync_req_type_t type;
     uint32_t task_id;
-    task_record_t task_data; // Chi copy data neu la UPLOAD
 } sync_msg_t;
 
 static QueueHandle_t s_sync_queue = NULL;
@@ -173,7 +172,10 @@ static void firebase_sync_task(void *pvParameters)
             }
 
             if (msg.type == SYNC_REQ_UPLOAD) {
-                http_put_task(&msg.task_data);
+                task_record_t task_data;
+                if (task_database_read(msg.task_id, &task_data) == ESP_OK) {
+                    http_put_task(&task_data);
+                }
             } else if (msg.type == SYNC_REQ_DELETE) {
                 http_delete_task(msg.task_id);
             }
@@ -190,7 +192,7 @@ static void firebase_sync_task(void *pvParameters)
 esp_err_t firebase_sync_init(void)
 {
     if (s_sync_queue == NULL) {
-        s_sync_queue = xQueueCreate(20, sizeof(sync_msg_t)); // Hàng đợi 20 thao tác
+        s_sync_queue = xQueueCreate(200, sizeof(sync_msg_t)); // Hàng đợi 200 thao tác, dùng rất ít RAM
         if (s_sync_queue == NULL) {
             ESP_LOGE(TAG, "Không thể tạo sync queue");
             return ESP_FAIL;
@@ -209,11 +211,10 @@ esp_err_t firebase_sync_upload_task(const task_record_t *task)
 
     sync_msg_t msg = {
         .type = SYNC_REQ_UPLOAD,
-        .task_id = task->id,
-        .task_data = *task // Copy struct
+        .task_id = task->id
     };
 
-    if (xQueueSend(s_sync_queue, &msg, 0) != pdTRUE) {
+    if (xQueueSend(s_sync_queue, &msg, pdMS_TO_TICKS(100)) != pdTRUE) {
         ESP_LOGE(TAG, "Sync queue đầy, mất kiện UPLOAD task %" PRIu32, task->id);
         return ESP_FAIL;
     }
@@ -253,7 +254,7 @@ esp_err_t firebase_sync_delete_task(uint32_t task_id)
         .task_id = task_id,
     };
 
-    if (xQueueSend(s_sync_queue, &msg, 0) != pdTRUE) {
+    if (xQueueSend(s_sync_queue, &msg, pdMS_TO_TICKS(100)) != pdTRUE) {
         ESP_LOGE(TAG, "Sync queue đầy, mất kiện DELETE task %" PRIu32, task_id);
         return ESP_FAIL;
     }

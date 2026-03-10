@@ -9,6 +9,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "openai_client.h"
@@ -159,10 +160,10 @@ static const char *PROMPT_B2_MUTATE =
     "    \"notes\": \"string|null\"\n"
     "  }\n"
     "}\n\n"
-    "QUY TẮC CHỌN TASK:\n"
-    "1. User mô tả TÊN task (VD: 'sửa task nhập dvc') → KHÔNG DÙNG Context IDs. Để `task_ids`: [], ghi `search_query`: \"nhập dvc\".\n"
-    "2. User nói SỐ ID (VD: 'xóa task 5') → điền `task_ids`: [5], `search_query`: null.\n"
-    "3. User NÓI RÕ 'tất cả task này/đó' → mới được phép chép nguyên mảng Context IDs vào `task_ids`.\n"
+    "QUY TẮC CHỌN TASK (TUÂN THỦ TUYỆT ĐỐI):\n"
+    "1. Nếu user NÓI TÊN task (VD: 'hoàn thành test2', 'sửa task nhập dvc') → BẮT BUỘC `task_ids`: [], và trích xuất tên đó vào `search_query` (VD: \"test2\"). KHÔNG dùng Context IDs.\n"
+    "2. Nếu user NÓI SỐ ID (VD: 'xóa task 5') → `task_ids`: [5], `search_query`: null.\n"
+    "3. CHỈ KHI user dùng từ chỉ định ('nó', 'đó', 'này') hoặc KHÔNG nêu tên/ID → MỚI chép nguyên mảng Context IDs vào `task_ids`.\n"
     "QUY TẮC CẬP NHẬT & THỜI GIAN:\n"
     "1. UPDATE_TASK: field không thay đổi → báo null. CHỈ dùng \"none\" nếu user bảo XÓA/BỎ field đó.\n"
     "2. DELETE_TASK: hủy/bỏ = soft, xóa hẳn = hard.\n"
@@ -176,10 +177,10 @@ static const char *PROMPT_B2_DETAIL =
     "Context IDs: [%s]\n\n"
     "Trả JSON:\n"
     "{\"task_ids\": [number], \"search_query\": \"string nếu mô tả tên task\"}\n\n"
-    "QUY TẮC:\n"
-    "1. User nói RÕ số ID (\"task 3\", \"#5\") → task_ids=[số đó]\n"
-    "2. User nói TÊN task (\"sinh nhật Linh\", \"báo cáo X\") → task_ids=[], search_query=\"tên task\"\n"
-    "3. KHÔNG tự đoán ID nếu user không nói số. KHÔNG bịa ID.\n"
+    "QUY TẮC (TUÂN THỦ TUYỆT ĐỐI):\n"
+    "1. Nếu user NÓI SỐ ID RÕ RÀNG (\"task 3\", \"#5\") → `task_ids`: [số đó], `search_query`: null.\n"
+    "2. Nếu user NÓI TÊN task (\"sinh nhật Linh\", \"báo cáo X\") → `task_ids`: [], `search_query`: \"tên task\". KHÔNG dùng Context IDs.\n"
+    "3. CHỈ KHI user dùng đại từ ('nó', 'đó', 'này') hoặc KHÔNG nêu tên/số → MỚI chép Context IDs vào `task_ids`.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SEARCH =
@@ -216,7 +217,7 @@ static void build_context_ids_str(char *buf, size_t buf_size)
     buf[0] = '\0';
     int offset = 0;
     for (int i = 0; i < s_context_task_count && offset < (int)buf_size - 10; i++) {
-        offset += snprintf(buf + offset, buf_size - offset,
+        APPEND_SNPRINTF(buf, buf_size, offset,
                            "%" PRIu32 "%s", s_context_task_ids[i],
                            (i == s_context_task_count - 1) ? "" : ", ");
     }

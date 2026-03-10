@@ -7,6 +7,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "json_parser.h"
@@ -104,7 +105,7 @@ esp_err_t action_task_summary(const char *data_json, char *response, size_t resp
 
     /* Format response */
     int offset = 0;
-    offset += snprintf(response + offset, response_size - offset,
+    APPEND_SNPRINTF(response, response_size, offset,
         "\xF0\x9F\x93\x88 *Tổng kết %s → %s:*\n\n"
         "\xF0\x9F\x93\x8B Tổng: %d task\n"
         "\xE2\x9C\x85 Hoàn thành: %d\n"
@@ -117,14 +118,14 @@ esp_err_t action_task_summary(const char *data_json, char *response, size_t resp
         count_cancelled);
 
     if (count_overdue > 0) {
-        offset += snprintf(response + offset, response_size - offset,
+        APPEND_SNPRINTF(response, response_size, offset,
             "\xE2\x9A\xA0\xEF\xB8\x8F Quá hạn: %d\n", count_overdue);
     }
 
     /* Tỷ lệ hoàn thành */
     if (count_total > 0) {
         int pct = (count_done * 100) / count_total;
-        offset += snprintf(response + offset, response_size - offset,
+        APPEND_SNPRINTF(response, response_size, offset,
             "\n\xF0\x9F\x8E\xAF Tiến độ: %d%%", pct);
     }
 

@@ -9,6 +9,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "action_undo.h"
@@ -103,7 +104,7 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
                         }
                         
                         if (written < response_size) {
-                            written += snprintf(response + written, response_size - written, 
+                            APPEND_SNPRINTF(response, response_size, written, 
                                 " - [#%" PRIu32 "] %s\n", task.id, task.title);
                         }
                         completed_count++;

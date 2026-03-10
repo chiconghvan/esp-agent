@@ -8,6 +8,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "vector_search.h"
@@ -99,14 +100,14 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
     for (int i = 0; i < id_count; i++) {
         task_record_t task;
         if (task_database_read(task_ids[i], &task) != ESP_OK) {
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xE2\x9A\xA0\xEF\xB8\x8F Không tìm thấy task #%lu\n\n",
                 (unsigned long)task_ids[i]);
             continue;
         }
 
         /* Format chi tiết đầy đủ */
-        offset += snprintf(response + offset, response_size - offset,
+        APPEND_SNPRINTF(response, response_size, offset,
             "\xF0\x9F\x93\x9D *Chi tiết task #%lu:*\n"
             "\xF0\x9F\x93\x8C Tiêu đề: %s\n"
             "\xF0\x9F\x93\x82 Loại: %s\n"
@@ -120,7 +121,7 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
         if (task.start_time > 0) {
             char buf[32];
             time_utils_format_vietnamese(task.start_time, buf, sizeof(buf));
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xF0\x9F\x95\x90 Bắt đầu: %s\n", buf);
         }
 
@@ -128,7 +129,7 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
         if (task.due_time > 0) {
             char buf[32];
             time_utils_format_vietnamese(task.due_time, buf, sizeof(buf));
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xF0\x9F\x93\x85 Thời hạn: %s\n", buf);
 
             /* Tính số ngày còn lại */
@@ -136,13 +137,13 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
             int days_left = (int)((task.due_time - now) / 86400);
             if (strcmp(task.status, "pending") == 0) {
                 if (days_left < 0) {
-                    offset += snprintf(response + offset, response_size - offset,
+                    APPEND_SNPRINTF(response, response_size, offset,
                         "\xE2\x9A\xA0\xEF\xB8\x8F *Quá hạn %d ngày!*\n", -days_left);
                 } else if (days_left == 0) {
-                    offset += snprintf(response + offset, response_size - offset,
+                    APPEND_SNPRINTF(response, response_size, offset,
                         "\xE2\x8F\xB0 *Hôm nay là hạn chót!*\n");
                 } else {
-                    offset += snprintf(response + offset, response_size - offset,
+                    APPEND_SNPRINTF(response, response_size, offset,
                         "\xE2\x8F\xB3 Còn %d ngày\n", days_left);
                 }
             }
@@ -152,20 +153,20 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
         if (task.reminder > 0) {
             char buf[32];
             time_utils_format_vietnamese(task.reminder, buf, sizeof(buf));
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xE2\x8F\xB0 Nhắc nhở: %s\n", buf);
         }
 
         /* Lặp lại */
         if (strcmp(task.repeat, "none") != 0 && strlen(task.repeat) > 0) {
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xF0\x9F\x94\x84 Lặp lại: %s (mỗi %d)\n",
                 task.repeat, task.repeat_interval);
         }
 
         /* Ghi chú */
         if (strlen(task.notes) > 0) {
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xF0\x9F\x93\x9D Ghi chú: %s\n", task.notes);
         }
 
@@ -173,7 +174,7 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
         {
             char buf[32];
             time_utils_format_vietnamese(task.created_at, buf, sizeof(buf));
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xF0\x9F\x95\x90 Tạo lúc: %s\n", buf);
         }
 
@@ -181,12 +182,12 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
         if (task.completed_at > 0) {
             char buf[32];
             time_utils_format_vietnamese(task.completed_at, buf, sizeof(buf));
-            offset += snprintf(response + offset, response_size - offset,
+            APPEND_SNPRINTF(response, response_size, offset,
                 "\xE2\x9C\x85 Hoàn thành: %s\n", buf);
         }
 
         if (i < id_count - 1) {
-            offset += snprintf(response + offset, response_size - offset, "\n");
+            APPEND_SNPRINTF(response, response_size, offset, "\n");
         }
     }
 

@@ -9,6 +9,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "action_undo.h"
@@ -113,12 +114,12 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                     if (new_due != NULL) {
                         if (strcmp(new_due, "none") == 0) {
                             task.due_time = 0;
-                            changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa thời hạn, ");
+                            APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa thời hạn, ");
                         } else {
                             time_t parsed = time_utils_parse_iso8601(new_due);
                             if (parsed > 0) {
                                 task.due_time = parsed;
-                                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "thời hạn, ");
+                                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "thời hạn, ");
                             }
                             /* else: parse thất bại → bỏ qua, giữ nguyên */
                         }
@@ -127,18 +128,18 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                     int64_t due_offset = json_get_int(fields, "due_offset_days", 0);
                     if (due_offset != 0 && task.due_time > 0) {
                         task.due_time += (time_t)(due_offset * 86400);
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "thời hạn, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "thời hạn, ");
                     }
                     const char *new_start = json_get_string(fields, "start_time", NULL);
                     if (new_start != NULL) {
                         if (strcmp(new_start, "none") == 0) {
                             task.start_time = 0;
-                            changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa bắt đầu, ");
+                            APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa bắt đầu, ");
                         } else {
                             time_t parsed = time_utils_parse_iso8601(new_start);
                             if (parsed > 0) {
                                 task.start_time = parsed;
-                                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "bắt đầu, ");
+                                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "bắt đầu, ");
                             }
                         }
                     }
@@ -147,12 +148,12 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                     if (new_reminder != NULL) {
                         if (strcmp(new_reminder, "none") == 0) {
                             task.reminder = 0;
-                            changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa nhắc nhở, ");
+                            APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa nhắc nhở, ");
                         } else {
                             time_t parsed = time_utils_parse_iso8601(new_reminder);
                             if (parsed > 0) {
                                 task.reminder = parsed;
-                                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "nhắc nhở, ");
+                                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "nhắc nhở, ");
                             }
                         }
                     }
@@ -160,24 +161,24 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                     int64_t rem_offset = json_get_int(fields, "reminder_offset_days", 0);
                     if (rem_offset != 0 && task.reminder > 0) {
                         task.reminder += (time_t)(rem_offset * 86400);
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "nhắc nhở, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "nhắc nhở, ");
                     }
                     const char *new_title = json_get_string(fields, "title", NULL);
                     if (new_title != NULL && strlen(new_title) > 0) {
                         strncpy(task.title, new_title, sizeof(task.title) - 1);
                         title_changed = true;
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "tiêu đề, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "tiêu đề, ");
                     }
                     const char *new_type = json_get_string(fields, "type", NULL);
                     if (new_type != NULL) {
                         const char *mapped = normalize_type(new_type);
                         strncpy(task.type, mapped, sizeof(task.type) - 1);
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "loại, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "loại, ");
                     }
                     const char *new_repeat = json_get_string(fields, "repeat", NULL);
                     if (new_repeat != NULL) {
                         strncpy(task.repeat, new_repeat, sizeof(task.repeat) - 1);
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "lặp lại, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "lặp lại, ");
                     }
                     int new_interval = json_get_int(fields, "repeat_interval", -1);
                     if (new_interval >= 0) {
@@ -186,7 +187,7 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                     const char *new_notes = json_get_string(fields, "notes", NULL);
                     if (new_notes != NULL) {
                         strncpy(task.notes, new_notes, sizeof(task.notes) - 1);
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "ghi chú, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "ghi chú, ");
                     }
                 }
                 
@@ -204,7 +205,7 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
                         }
                     }
                     if (written < response_size) {
-                        written += snprintf(response + written, response_size - written, 
+                        APPEND_SNPRINTF(response, response_size, written, 
                             " - [#%" PRIu32 "] %s (%s)\n", task.id, task.title, changes_buf[0] ? changes_buf : "đổi ID");
                     }
                     updated_count++;
@@ -280,12 +281,12 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             if (new_due != NULL) {
                 if (strcmp(new_due, "none") == 0) {
                     task.due_time = 0;
-                    changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa thời hạn, ");
+                    APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa thời hạn, ");
                 } else {
                     time_t parsed = time_utils_parse_iso8601(new_due);
                     if (parsed > 0) {
                         task.due_time = parsed;
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "thời hạn, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "thời hạn, ");
                     }
                 }
             }
@@ -293,18 +294,18 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             int64_t due_offset = json_get_int(fields, "due_offset_days", 0);
             if (due_offset != 0 && task.due_time > 0) {
                 task.due_time += (time_t)(due_offset * 86400);
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "thời hạn, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "thời hạn, ");
             }
             const char *new_start = json_get_string(fields, "start_time", NULL);
             if (new_start != NULL) {
                 if (strcmp(new_start, "none") == 0) {
                     task.start_time = 0;
-                    changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa bắt đầu, ");
+                    APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa bắt đầu, ");
                 } else {
                     time_t parsed = time_utils_parse_iso8601(new_start);
                     if (parsed > 0) {
                         task.start_time = parsed;
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "bắt đầu, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "bắt đầu, ");
                     }
                 }
             }
@@ -313,12 +314,12 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             if (new_reminder != NULL) {
                 if (strcmp(new_reminder, "none") == 0) {
                     task.reminder = 0;
-                    changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "xóa nhắc nhở, ");
+                    APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "xóa nhắc nhở, ");
                 } else {
                     time_t parsed = time_utils_parse_iso8601(new_reminder);
                     if (parsed > 0) {
                         task.reminder = parsed;
-                        changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "nhắc nhở, ");
+                        APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "nhắc nhở, ");
                     }
                 }
             }
@@ -326,24 +327,24 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             int64_t rem_offset = json_get_int(fields, "reminder_offset_days", 0);
             if (rem_offset != 0 && task.reminder > 0) {
                 task.reminder += (time_t)(rem_offset * 86400);
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "nhắc nhở, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "nhắc nhở, ");
             }
             const char *new_title = json_get_string(fields, "title", NULL);
             if (new_title != NULL && strlen(new_title) > 0) {
                 strncpy(task.title, new_title, sizeof(task.title) - 1);
                 title_changed = true;
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "tiêu đề, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "tiêu đề, ");
             }
             const char *new_type = json_get_string(fields, "type", NULL);
             if (new_type != NULL) {
                 const char *mapped = normalize_type(new_type);
                 strncpy(task.type, mapped, sizeof(task.type) - 1);
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "loại, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "loại, ");
             }
             const char *new_repeat = json_get_string(fields, "repeat", NULL);
             if (new_repeat != NULL) {
                 strncpy(task.repeat, new_repeat, sizeof(task.repeat) - 1);
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "lặp lại, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "lặp lại, ");
             }
             int new_interval = json_get_int(fields, "repeat_interval", -1);
             if (new_interval >= 0) {
@@ -352,7 +353,7 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             const char *new_notes = json_get_string(fields, "notes", NULL);
             if (new_notes != NULL) {
                 strncpy(task.notes, new_notes, sizeof(task.notes) - 1);
-                changes_len += snprintf(changes_buf + changes_len, sizeof(changes_buf) - changes_len, "ghi chú, ");
+                APPEND_SNPRINTF(changes_buf, sizeof(changes_buf), changes_len, "ghi chú, ");
             }
         }
 

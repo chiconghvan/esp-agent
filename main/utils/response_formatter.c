@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include "safe_append.h"
 
 static const char *get_type_name_vn(const char *type)
 {
@@ -108,8 +109,7 @@ char *format_task_list(const task_index_entry_t **matches, int count, const char
             telegram_bot_send_default(buffer);
             written = snprintf(buffer, buffer_size, "📋 <b>%s (tiếp theo):</b>\n───────────────\n", label);
         }
-        strcat(buffer + written, item);
-        written += item_len;
+        APPEND_SNPRINTF(buffer, buffer_size, written, "%s", item);
     }
 
     if ((size_t)written < buffer_size - 64)
@@ -146,8 +146,7 @@ char *format_task_list_short(const task_index_entry_t **matches, int count, cons
             telegram_bot_send_default(buffer);
             written = snprintf(buffer, buffer_size, "📄 <b>%s (tiếp theo):</b>\n───────────────\n", label);
         }
-        strcat(buffer + written, item);
-        written += item_len;
+        APPEND_SNPRINTF(buffer, buffer_size, written, "%s", item);
     }
 
     if ((size_t)written < buffer_size - 64)

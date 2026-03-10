@@ -497,10 +497,16 @@ static void display_task(void *arg)
         TickType_t now = xTaskGetTickCount();
 
         /* Update WiFi status periodically to avoid blocking animation */
-        if (last_wifi_check == 0 || (now - last_wifi_check) * portTICK_PERIOD_MS >= 2000) {
+        if (last_wifi_check == 0 || (now - last_wifi_check) * portTICK_PERIOD_MS >= 1000) {
+            int old_level = s_wifi_level;
             s_wifi_ok = wifi_manager_is_connected();
             s_wifi_level = wifi_manager_get_level();
             last_wifi_check = now;
+            
+            /* Tự động redraw Header nếu mức tín hiệu thay đổi trong IDLE */
+            if (s_wifi_level != old_level && s_state == SCREEN_IDLE) {
+                render_idle();
+            }
         }
 
         uint32_t elapsed = (now - s_state_start) * portTICK_PERIOD_MS;
@@ -586,10 +592,15 @@ static void display_task(void *arg)
                 }
                 break;
             case SCREEN_IDLE:
+                /* Refresh data từ database mỗi 60s */
                 if ((now - last_idle_refresh) * portTICK_PERIOD_MS >= IDLE_REFRESH_MS) {
                     refresh_idle_data();
-                    render_idle();
                     last_idle_refresh = now;
+                    render_idle(); // Database thay đổi -> vẽ lại
+                } 
+                /* Cập nhật UI (Header: WiFi + Clock) mỗi 5s */
+                else if (elapsed % 5000 < 20) { 
+                    render_idle();
                 }
                 break;
             case SCREEN_BOOT:

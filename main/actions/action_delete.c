@@ -9,6 +9,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include "action_dispatcher.h"
 #include "task_database.h"
 #include "action_undo.h"
@@ -80,7 +81,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
                 task_record_t t;
                 if (task_database_read(explicit_task_ids[i], &t) == ESP_OK) {
                     s_pending_deletes[s_pending_count++] = explicit_task_ids[i];
-                    written += snprintf(response + written, response_size - written,
+                    APPEND_SNPRINTF(response, response_size, written,
                         " - [#%" PRIu32 "] %s\n", t.id, t.title);
                 }
             }
@@ -131,7 +132,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
                 }
 
                 if (task_database_soft_delete(explicit_task_ids[i]) == ESP_OK) {
-                    written += snprintf(response + written, response_size - written,
+                    APPEND_SNPRINTF(response, response_size, written,
                         " - [#%" PRIu32 "] %s\n", task.id, task.title);
                     deleted_count++;
                 }
@@ -197,7 +198,7 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
 
             if (task_database_hard_delete(id) == ESP_OK) {
                 vector_search_delete(id);
-                written += snprintf(response + written, response_size - written, "✅ #%" PRIu32 ": %s\n", id, title_tmp);
+                APPEND_SNPRINTF(response, response_size, written, "✅ #%" PRIu32 ": %s\n", id, title_tmp);
                 success_count++;
             }
         }

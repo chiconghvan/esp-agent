@@ -92,8 +92,8 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
         /* Tìm pointer trong index */
         for (int k = 0; k < index->count; k++) {
             if (index->entries[k].id == tid) {
-                if (status_buf[0] && strcmp(index->entries[k].status, status_buf) != 0) {
-                    break; /* Bỏ qua nếu ko đúng status */
+                if (status_buf[0] && strstr(status_buf, index->entries[k].status) == NULL) {
+                    break; /* Bỏ qua nếu status của task không nằm trong danh sách status_buf cho phép */
                 }
                 matches[task_count++] = &index->entries[k];
                 break;

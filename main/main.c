@@ -15,6 +15,7 @@
  * ===========================================================================
  */
 
+#include "safe_append.h"
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -126,7 +127,7 @@ static void telegram_polling_loop(void)
                         int w = snprintf(rep, sizeof(rep), "📅 **DEADLINE**\n───────────────\n");
                         for (int j = 0; j < found; j++) {
                             char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
-                            w += snprintf(rep + w, sizeof(rep) - w, "\n• [#%lu] %s\n  ⏳ Hạn: %s", (unsigned long)results[j].id, results[j].title, db);
+                            APPEND_SNPRINTF(rep, sizeof(rep), w, "\n• [#%lu] %s\n  ⏳ Hạn: %s", (unsigned long)results[j].id, results[j].title, db);
                         }
                     } else {
                         snprintf(rep, sizeof(rep), "✅ Tuyệt vời! Bạn không có deadline nào trong 3 ngày tới.");
@@ -189,7 +190,7 @@ static void telegram_polling_loop(void)
                     int w = snprintf(response, sizeof(response), "📅 <b>DEADLINE</b>\n");
                     for (int j = 0; j < found; j++) {
                         char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
-                        w += snprintf(response + w, (sizeof(response) > (size_t)w) ? (sizeof(response) - w) : 0, 
+                        APPEND_SNPRINTF(response, sizeof(response), w, 
                                       "\n• <b>[#%" PRIu32 "] %s</b> (<i>%s</i>)", results[j].id, results[j].title, db);
                     }
                 } else {
@@ -230,7 +231,7 @@ static void telegram_polling_loop(void)
                         task_record_t task;
                         if (task_database_read(tid, &task) == ESP_OK) {
                             if (found > 0) {
-                                written += snprintf(response + written, sizeof(response) - written,
+                                APPEND_SNPRINTF(response, sizeof(response), written,
                                     "\n──────────\n");
                             }
                             char reminder_buf[64];
@@ -242,7 +243,7 @@ static void telegram_polling_loop(void)
                             time_utils_format_vietnamese(task.reminder, reminder_buf, sizeof(reminder_buf));
                             time_utils_format_repeat(task.repeat, task.repeat_interval, repeat_buf, sizeof(repeat_buf));
 
-                            written += snprintf(response + written, sizeof(response) - written,
+                            APPEND_SNPRINTF(response, sizeof(response), written,
                                 "📌 <b>[#%" PRIu32 "] %s</b>\n"
                                 "<i>🏷️ Phân loại:</i> %s\n"
                                 "<i>📅 Thời hạn:</i> %s\n"

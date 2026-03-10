@@ -183,21 +183,33 @@ void ssd1306_draw_string(int x, int y, const char *str, bool inverted)
  * -------------------------------------------------------------------------- */
 void ssd1306_draw_wifi_icon(int x, int y, int level, bool inverted)
 {
-    /* 11 columns, 8 rows (LSB = top) */
-    /* Level 3: Dot + 2 Arcs */
-    const uint8_t wifi_lvl3[11] = { 0x04, 0x02, 0x12, 0x0A, 0x4A, 0xCA, 0x4A, 0x0A, 0x12, 0x02, 0x04 };
-    /* Level 2: Dot + 1 Arc */
-    const uint8_t wifi_lvl2[11] = { 0x00, 0x00, 0x10, 0x08, 0x48, 0xC8, 0x48, 0x08, 0x10, 0x00, 0x00 };
-    /* Level 1: Dot only */
-    const uint8_t wifi_lvl1[11] = { 0x00, 0x00, 0x00, 0x00, 0x40, 0xC0, 0x40, 0x00, 0x00, 0x00, 0x00 };
-    /* Level 0: Disconnected (!) */
-    const uint8_t wifi_lvl0[11] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x5E, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    /* 
+     * Thiết kế mới: 3 cột (bars) có độ cao tăng dần, không khung.
+     * Cột 1: rộng 2px, cao 4px.
+     * Cột 2: rộng 2px, cao 6px.
+     * Cột 3: rộng 2px, cao 8px.
+     * Cách nhau 1px.
+     */
+    
+    uint8_t bmp[11] = { 0 };
+    
+    // Bar 1 (cao 4px: bits 4-7) - Căn lề dưới
+    uint8_t h4 = 0xF0;
+    // Bar 2 (cao 6px: bits 2-7) - Căn lề dưới
+    uint8_t h6 = 0xFC;
+    // Bar 3 (cao 8px: bits 0-7) - Toàn bộ
+    uint8_t h8 = 0xFF;
 
-    const uint8_t *bmp;
-    if (level >= 3) bmp = wifi_lvl3;
-    else if (level == 2) bmp = wifi_lvl2;
-    else if (level == 1) bmp = wifi_lvl1;
-    else bmp = wifi_lvl0;
+    if (level >= 1) {
+        bmp[2] = h4; bmp[3] = h4;
+    }
+    if (level >= 2) {
+        bmp[5] = h6; bmp[6] = h6;
+    }
+    if (level >= 3) {
+        bmp[8] = h8; bmp[9] = h8;
+    }
+    // Level 0: Không vẽ gì (hoặc có thể vẽ bar 1 mờ nếu muốn)
 
     for (int col = 0; col < 11; col++) {
         uint8_t line = bmp[col];
