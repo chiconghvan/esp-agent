@@ -356,22 +356,12 @@ void app_main(void)
         esp_restart();
     }
     ESP_LOGI(TAG, "[2/5] WiFi OK");
-    display_boot_progress(40, "Dong bo SNTP...");
-
-    /* Đồng bộ thời gian */
-    ESP_LOGI(TAG, "[2/5] Đồng bộ thời gian SNTP...");
-    err = wifi_manager_start_sntp();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "SNTP timeout, tiếp tục với thời gian chưa chính xác");
-    }
-    display_boot_progress(55, "Khoi tao Database...");
-
     /* Bước 3: Khởi tạo Database (SPIFFS) */
     ESP_LOGI(TAG, "[3/5] Khởi tạo database...");
     err = task_database_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Database thất bại! Khởi động lại...");
-        display_boot_progress(55, "DB THAT BAI!");
+        display_boot_progress(50, "DB THAT BAI!");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
     }
@@ -398,6 +388,15 @@ void app_main(void)
 
     /* Khởi tạo Token Tracker */
     token_tracker_init();
+    display_boot_progress(75, "Dong bo SNTP...");
+
+    /* Đồng bộ thời gian (Trì hoãn đến cuối để WiFi có thời gian "thở" và lấy được DNS) */
+    ESP_LOGI(TAG, "[*] Đồng bộ thời gian SNTP...");
+    err = wifi_manager_start_sntp();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "SNTP timeout, tiếp tục với thời gian chưa chính xác");
+    }
+
     display_boot_progress(80, "Telegram Bot...");
 
     /* Bước 4: Khởi tạo Telegram Bot */

@@ -97,7 +97,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
             }
             search_result_t res[1];
             int f = 0;
-            vector_search_find_similar(query_embedding, res, 1, &f);
+            vector_search_find_similar(query_embedding, query_buf, res, 1, &f);
             if (f == 0) {
                 format_not_found(query_buf, response, response_size);
                 return ESP_OK;
@@ -155,7 +155,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
         search_result_t res[1];
         int f = 0;
-        vector_search_find_similar(query_embedding, res, 1, &f);
+        vector_search_find_similar(query_embedding, query_buf, res, 1, &f);
         if (f == 0) {
             format_not_found(query_buf, response, response_size);
             return ESP_OK;

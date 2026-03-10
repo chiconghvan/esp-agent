@@ -62,7 +62,7 @@ esp_err_t vector_search_delete(uint32_t task_id);
  * @param found_count Con trỏ để lưu số kết quả tìm được
  * @return esp_err_t ESP_OK
  */
-esp_err_t vector_search_find_similar(const float *query_embedding,
+esp_err_t vector_search_find_similar(const float *query_embedding, const char *query_text,
                                       search_result_t *results, int max_results,
                                       int *found_count);
 

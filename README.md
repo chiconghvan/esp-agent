@@ -1,4 +1,4 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh v2.0.1
+# ESP-Agent: Trợ lý nhắc việc thông minh v2.3.0
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306 + Firebase Cloud Sync.
 
@@ -8,7 +8,8 @@
 
 - **Điều khiển bằng tiếng Việt tự nhiên**: Chấm dứt việc nhớ các cú pháp phức tạp. Chỉ cần nhắn tin như đang nói chuyện với một người bạn.
 - **AI Intent Parsing**: Sử dụng `gpt-4o-mini` để phân tích yêu cầu (Thêm, Sửa, Xóa, Hoàn thành, Tìm kiếm).
-- **Semantic Search**: Tìm kiếm công việc theo ý nghĩa (ví dụ: hỏi "Báo cáo đâu?" khi tiêu đề task là "Nộp văn bản tổng kết") nhờ OpenAI Embeddings.
+- **Hybrid Search (Adaptive Alpha Weighting)**: Kết hợp sức mạnh của tìm kiếm ngữ nghĩa (Semantic) và từ khóa chính xác (Lexical). Tự động điều chỉnh trọng số để tìm chính xác cả những từ viết tắt hoặc kí hiệu đặc thù (VD: "nq 66.7").
+- **Captive Portal WiFi Setup**: Tự động phát Wifi AP khi chưa có cấu hình. Giao diện Web hiện đại, mượt mà giúp người dùng quét và chọn mạng WiFi bằng điện thoại một cách dễ dàng.
 - **Bảo mật dữ liệu (Safe Delete)**: Cơ chế xác thực 2 bước bằng lệnh `/confirm` trước khi xóa vĩnh viễn dữ liệu.
 - **Màn hình OLED Carousel**: Tự động hiển thị các deadline trong 3 ngày tới với hiệu ứng Slide mượt mà.
 - **Nút bấm đa năng (Bật/Tắt & WiFi Reset)**: 
@@ -94,6 +95,6 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 Dự án được phát hành dưới giấy phép **MIT**. Mọi đóng góp xin vui lòng tạo Pull Request hoặc Issue trên GitHub.
 
 ---
-**Phiên bản:** v2.0.1  
+**Phiên bản:** v2.3.0  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-06
+**Cập nhật cuối:** 2026-03-10

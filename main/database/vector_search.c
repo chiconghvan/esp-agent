@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
+#include <strings.h>
 #include <math.h>
 #include <dirent.h>
 #include "esp_log.h"
@@ -135,9 +136,38 @@ esp_err_t vector_search_delete(uint32_t task_id)
 }
 
 /* --------------------------------------------------------------------------
+ * Tính Lexical Score (tỷ lệ từ khóa khớp)
+ * -------------------------------------------------------------------------- */
+static float calculate_lexical_score(const char *target_text, const char *query_text)
+{
+    if (!target_text || !query_text || strlen(query_text) == 0) return 0.0f;
+    
+    char query_copy[256];
+    strncpy(query_copy, query_text, sizeof(query_copy) - 1);
+    query_copy[sizeof(query_copy) - 1] = '\0';
+    
+    int total_words = 0;
+    int matched_words = 0;
+    
+    char *saveptr;
+    char *token = strtok_r(query_copy, " \t\n\r,.", &saveptr);
+    while (token != NULL) {
+        /* Bỏ qua các từ khóa quá ngắn (<= 1 ký tự) nếu muốn, nhưng ở đây cứ check hết */
+        total_words++;
+        if (strcasestr(target_text, token) != NULL) {
+            matched_words++;
+        }
+        token = strtok_r(NULL, " \t\n\r,.", &saveptr);
+    }
+    
+    if (total_words == 0) return 0.0f;
+    return (float)matched_words / (float)total_words;
+}
+
+/* --------------------------------------------------------------------------
  * Tìm kiếm semantic: top-K tasks gần nhất
  * -------------------------------------------------------------------------- */
-esp_err_t vector_search_find_similar(const float *query_embedding,
+esp_err_t vector_search_find_similar(const float *query_embedding, const char *query_text,
                                       search_result_t *results, int max_results,
                                       int *found_count)
 {
@@ -174,8 +204,35 @@ esp_err_t vector_search_find_similar(const float *query_embedding,
         }
 
         /* Tính cosine similarity */
-        float similarity = vector_search_cosine_similarity(
+        float semantic_score = vector_search_cosine_similarity(
             query_embedding, stored_embedding, EMBEDDING_DIM);
+
+        float similarity = semantic_score;
+
+        /* Hybrid Search: Alpha Weighting (Lexical + Semantic) */
+        if (query_text != NULL) {
+            task_record_t task_data;
+            if (task_database_read(task_id, &task_data) == ESP_OK) {
+                /* Tạo text tổng hợp từ title và notes để search string */
+                char target_text[TASK_TITLE_MAX_LEN + TASK_NOTES_MAX_LEN + 2];
+                snprintf(target_text, sizeof(target_text), "%s %s", task_data.title, task_data.notes);
+                
+                float lexical_score = calculate_lexical_score(target_text, query_text);
+                
+                /* Alpha Cân bằng động (Adaptive Alpha) */
+                float alpha = 0.5f; 
+                if (lexical_score >= 0.8f) {
+                    alpha = 0.2f; /* Trúng Keyword gần tuyệt đối -> Semantic chỉ chiếm 20% trọng số */
+                } else if (lexical_score >= 0.4f) {
+                    alpha = 0.4f; /* Trúng một nửa -> Semantic chiếm 40% trọng số */
+                }
+                
+                similarity = (alpha * semantic_score) + ((1.0f - alpha) * lexical_score);
+                
+                ESP_LOGI(TAG, "Hybrid task #%lu: sem=%.3f, lex=%.3f, alpha=%.2f -> final=%.3f", 
+                         (unsigned long)task_id, semantic_score, lexical_score, alpha, similarity);
+            }
+        }
 
         /* Kiểm tra ngưỡng */
         if (similarity < SIMILARITY_THRESHOLD) {

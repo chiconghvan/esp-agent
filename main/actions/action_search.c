@@ -69,7 +69,7 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
     search_result_t search_results[SEARCH_TOP_K];
     int found_count = 0;
 
-    err = vector_search_find_similar(query_embedding, search_results,
+    err = vector_search_find_similar(query_embedding, query_buf, search_results,
                                       SEARCH_TOP_K, &found_count);
 
     if (err != ESP_OK || found_count == 0) {

@@ -20,6 +20,7 @@
 #include "esp_http_client.h"
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
+#include "display_manager.h"
 
 static const char *TAG = "telegram_bot";
 
@@ -42,6 +43,8 @@ static esp_err_t http_event_handler(esp_http_client_event_t *event)
                 time_t now = time(NULL);
                 if (now < 1704067200) { 
                     time_utils_set_time_from_http_date(event->header_value);
+                    ESP_LOGI(TAG, "Đã cập nhật đồng hồ từ Telegram, làm mới màn hình...");
+                    display_show_idle();
                 }
             }
             break;
