@@ -81,7 +81,7 @@ static bool match_filter(const task_index_entry_t *entry,
             case FILTER_OP_BEFORE:      return val > 0 && val < filter->time_value;
             case FILTER_OP_AFTER:       return val > 0 && val > filter->time_value;
             case FILTER_OP_BETWEEN:
-                return val >= filter->time_value && val <= filter->time_value_end;
+                return val > 0 && val >= filter->time_value && val <= filter->time_value_end;
             case FILTER_OP_IS_NULL:     return val == 0;
             case FILTER_OP_IS_NOT_NULL: return val != 0;
             default: return true;

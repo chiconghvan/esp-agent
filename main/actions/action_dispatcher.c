@@ -130,11 +130,12 @@ static const char *PROMPT_B2_QUERY =
     "QUY TẮC:\n"
     "1. LUÔN thêm status=pending trừ khi user nói rõ. (Hệ thống tự động gộp pending và overdue. Nếu user CHỈ hỏi task quá hạn, dùng status=overdue và KHÔNG CẦN thêm filter due_time).\n"
     "2. Hỏi về task LẶP LẠI → filter repeat, KHÔNG thêm filter due_time (vì due_time gốc có thể ở quá khứ)\n"
-    "3. Một tuần LUÔN bắt đầu từ Thứ 2 và kết thúc vào Chủ Nhật.\n"
-    "4. 'Tuần này': T2 đến CN tuần hiện tại. 'Tuần sau': T2 đến CN tuần kế tiếp.\n"
-    "   Ví dụ: Nếu hôm nay là Thứ 5, 05/03/2026 -> Tuần sau là 2026-03-09T00:00:00 đến 2026-03-15T23:59:59.\n"
-    "5. 'Deadline' trong khoảng thời gian (hôm nay, tuần này): Nhớ dùng `op=\"before\"` với thời điểm KẾT THÚC của khoảng đó. Các task quá hạn trước đó vẫn sẽ xuất hiện vì chúng có status là overdue/pending.\n"
-    "6. User đề cập LOẠI task (báo cáo, họp, nhắc, kỉ niệm...) → LUÔN thêm filter type tương ứng (report, meeting, reminder, anniversary, event, other)\n"
+    "3. KHOẢNG RỘNG (Tuần, Tháng): BẮT BUỘC dùng `op=\"between\"` với `value`=bắt đầu, `value_end`=kết thúc. Một tuần LUÔN là Thứ 2 (00:00:00) đến Chủ Nhật (23:59:59).\n"
+    "4. CÁCH TÍNH 'Tuần này': Phải tự suy luận ra ngày Thứ 2 và Chủ Nhật của tuần chứa ngày HIỆN TẠI.\n"
+    "   Ví dụ: Hôm nay là Thứ 4 (11/03/2026) -> Mức 'Tuần này' = 2026-03-09T00:00:00 đến 2026-03-15T23:59:59.\n"
+    "5. NGÀY CỤ THỂ (Mai, Hôm nay): BẮT BUỘC dùng `op=\"between\"` 00:00:00 đến 23:59:59 của ngày đó.\n"
+    "6. TUYỆT ĐỐI KHÔNG DÙNG `op=\"before\"` HOẶC `op=\"after\"` KHI XOAY QUANH (TUẦN/THÁNG/NGÀY) DỄ GÂY LỌT/SÓT TASK CŨ.\n"
+    "7. User đề cập LOẠI task (báo cáo, họp, nhắc...) → LUÔN thêm filter type tương ứng (report, meeting, reminder, anniversary, event, other)\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_MUTATE =
@@ -304,52 +305,52 @@ static esp_err_t step_b2_parse(action_type_t intent,
     time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
-    char *prompt = (char *)malloc(2048);
+    char *prompt = (char *)malloc(3072);
     if (!prompt) return ESP_ERR_NO_MEM;
 
     switch (intent) {
         case ACTION_CREATE_TASK:
-            snprintf(prompt, 2048, PROMPT_B2_CREATE,
+            snprintf(prompt, 3072, PROMPT_B2_CREATE,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_QUERY_TASKS:
-            snprintf(prompt, 2048, PROMPT_B2_QUERY,
+            snprintf(prompt, 3072, PROMPT_B2_QUERY,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_UPDATE_TASK:
-            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
+            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "UPDATE_TASK", user_message, context_ids);
             break;
 
         case ACTION_COMPLETE_TASK:
-            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
+            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "COMPLETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_DELETE_TASK:
-            snprintf(prompt, 2048, PROMPT_B2_MUTATE,
+            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
                      iso_buf, date_buf, weekday_buf, "DELETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_GET_DETAIL:
-            snprintf(prompt, 2048, PROMPT_B2_DETAIL,
+            snprintf(prompt, 3072, PROMPT_B2_DETAIL,
                      iso_buf, date_buf, weekday_buf, user_message, context_ids);
             break;
 
         case ACTION_SEARCH_SEMANTIC:
-            snprintf(prompt, 2048, PROMPT_B2_SEARCH,
+            snprintf(prompt, 3072, PROMPT_B2_SEARCH,
                      user_message);
             break;
 
         case ACTION_TASK_SUMMARY:
-            snprintf(prompt, 2048, PROMPT_B2_SUMMARY,
+            snprintf(prompt, 3072, PROMPT_B2_SUMMARY,
                      iso_buf, date_buf, weekday_buf, user_message);
             break;
 
         case ACTION_CHITCHAT:
-            snprintf(prompt, 2048, PROMPT_B2_CHITCHAT,
+            snprintf(prompt, 3072, PROMPT_B2_CHITCHAT,
                      user_message);
             break;
 

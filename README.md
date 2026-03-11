@@ -1,4 +1,4 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh v2.3.0
+# ESP-Agent: Trợ lý nhắc việc thông minh v2.3.1
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306 + Firebase Cloud Sync.
 
@@ -95,6 +95,6 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 Dự án được phát hành dưới giấy phép **MIT**. Mọi đóng góp xin vui lòng tạo Pull Request hoặc Issue trên GitHub.
 
 ---
-**Phiên bản:** v2.3.0  
+**Phiên bản:** v2.3.1  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-10
+**Cập nhật cuối:** 2026-03-11
