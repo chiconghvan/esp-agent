@@ -223,6 +223,35 @@ time_range_t time_utils_get_this_week_range(void)
 }
 
 /* --------------------------------------------------------------------------
+ * Lấy time range cho "tuần sau" (Thứ 2 → Chủ nhật của tuần kế tiếp)
+ * -------------------------------------------------------------------------- */
+time_range_t time_utils_get_next_week_range(void)
+{
+    time_t now = time(NULL);
+    struct tm time_info = get_local_time(now);
+
+    /* Tính ngày Thứ 2 tuần này (wday: 0=CN, 1=T2, ..., 6=T7) */
+    int days_since_monday = (time_info.tm_wday == 0) ? 6 : (time_info.tm_wday - 1);
+
+    time_info.tm_mday -= days_since_monday;
+    time_info.tm_mday += 7; /* Cộng 7 ngày để sang thứ 2 tuần sau */
+    time_info.tm_hour = 0;
+    time_info.tm_min = 0;
+    time_info.tm_sec = 0;
+    time_t start = mktime(&time_info);
+
+    /* Chủ nhật tuần sau */
+    time_info.tm_mday += 6;
+    time_info.tm_hour = 23;
+    time_info.tm_min = 59;
+    time_info.tm_sec = 59;
+    time_t end = mktime(&time_info);
+
+    time_range_t range = { .start = start, .end = end };
+    return range;
+}
+
+/* --------------------------------------------------------------------------
  * Lấy time range cho "tháng này"
  * -------------------------------------------------------------------------- */
 time_range_t time_utils_get_this_month_range(void)

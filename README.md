@@ -1,4 +1,4 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh 3.0.0
+# ESP-Agent: Trợ lý nhắc việc thông minh 3.1.1
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED SSD1306 + Firebase Cloud Sync.
 
@@ -8,7 +8,9 @@
 
 - **Điều khiển bằng tiếng Việt tự nhiên**: Chấm dứt việc nhớ các cú pháp phức tạp. Chỉ cần nhắn tin như đang nói chuyện với một người bạn.
 - **AI Intent Parsing Cải Tiến (Kiến trúc 2 bước)**: Sử dụng `gpt-4o-mini` để phân loại ý định (B1) cực nhanh và trích xuất chi tiết (B2) chính xác. Khắc phục hoàn toàn lỗi lệch ngày tháng, phân biệt rõ ràng giữa việc sửa, xóa, và tìm kiếm.
-- **Web Log Viewer (Mới)**: Xem log hệ thống không dây trực tiếp qua trình duyệt tại địa chỉ `http://esp-agent.local/log` hoặc qua IP của ESP. Tích hợp cuộn thông minh (smart scroll) và Chunked Transfer Encoding tiết kiệm RAM.
+- **Tối ưu Thời gian Tương Lai (Bối cảnh Đa chiều)**: Giải quyết dứt điểm điểm yếu của LLM khi không hiểu vòng lặp thời gian thực tế. Thuật toán tự rẽ nhánh cung cấp Bối cảnh cụ thể của "Tuần Sau", "Quý Tới". Task lặp lại vĩnh viễn không bao giờ sợ bị lùi ngày.
+- **Micro-Optimization RAM System (Cấp phát động)**: Tái sử dụng vùng nhớ HTTP Response, triệt tiêu Mảng tĩnh cỡ bự (Static Arrays / Stack) tránh hoàn toàn hiện tượng Guru Meditation (Stack Overflow) khi Firmware Up-Scale.
+- **Web Log Viewer Delta Update**: Xem log hệ thống không dây trực tiếp qua trình duyệt tại địa chỉ `http://esp-agent.local/log`. Ứng dụng công nghệ Chunked Transfer Encoding kết hợp JS Vanilla Delta Streaming để chỉ lấy các Log mới (siêu mượt, không tốn RAM).
 - **Đồng bộ thời gian siêu tốc (Mới)**: Lấy thời gian chuẩn xác ngay từ HTTP Date Header của Telegram thay vì chờ SNTP.
 - **Task Định Kỳ Thông Minh**: Tự động dời hạn sang chu kỳ tiếp theo và giữ nguyên ID khi bạn đánh dấu "hoàn thành" một task lặp lại.
 - **Hybrid Search (Adaptive Alpha Weighting)**: Kết hợp sức mạnh của tìm kiếm ngữ nghĩa (Semantic) và từ khóa chính xác (Lexical). Tự động điều chỉnh trọng số để tìm chính xác cả những từ viết tắt hoặc kí hiệu đặc thù (VD: "nq 66.7").
@@ -98,6 +100,6 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 Dự án được phát hành dưới giấy phép **MIT**. Mọi đóng góp xin vui lòng tạo Pull Request hoặc Issue trên GitHub.
 
 ---
-**Phiên bản:** 3.0.0  
+**Phiên bản:** 3.1.1  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** Lần gần nhất
+**Cập nhật cuối:** Lần gần nhất (v3.1.1 - Micro Optimization & Time Context Fixing)
