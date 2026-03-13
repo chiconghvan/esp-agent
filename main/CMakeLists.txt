@@ -26,6 +26,7 @@ set(COMPONENT_SRCS
     "utils/json_parser.c"
     "utils/response_formatter.c"
     "utils/token_tracker.c"
+    "utils/log_server.c"
     "display/ssd1306.c"
     "display/vn_utils.c"
     "display/display_manager.c"
@@ -62,5 +63,6 @@ idf_component_register(
         mbedtls
         driver
         esp_http_server
+        mdns
         app_update
 )

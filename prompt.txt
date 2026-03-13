@@ -216,3 +216,9 @@ yêu cầu json trả về có định dạng
   ]          <- tự đề xuất các trường thông tin, sửa đổi đối với từng phần tử của mảng filters 
 }
 Sử dụng tìm kiếm vector đối với các trường hợp request có nội dung cụ thể liên quan đến tiêu đề, nội dung một cách cụ thể thì sử dụng tìm kiếm vector trong các vector đã lưu, nếu có nhiều vector có ngữ nghĩa tương đồng (confidence gần bằng nhau với request thì liệt kê tất ra cho user xem.
+
+
+#define WIFI_SSID               "VP T2"*/
+
+/** Mật khẩu WiFi (tuỳ chọn) 
+#define WIFI_PASSWORD            "13654481"

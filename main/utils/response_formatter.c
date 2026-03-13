@@ -196,6 +196,77 @@ char *format_task_updated(const task_record_t *task, const char *changes, char *
     return buffer;
 }
 
+char *format_task_detail_full(const task_record_t *task, char *buffer, size_t buffer_size)
+{
+    if (task == NULL || buffer == NULL) return buffer;
+
+    int offset = 0;
+    
+    /* Title & Tags */
+    APPEND_SNPRINTF(buffer, buffer_size, offset,
+        "\xF0\x9F\x93\x9D <b>[#%" PRIu32 "] %s</b>\n"
+        "───────────────\n"
+        "<i>🏷️ Loại:</i> %s\n"
+        "<i>📊 Trạng thái:</i> %s %s\n",
+        task->id, task->title, 
+        get_type_name_vn(task->type), 
+        (strcmp(task->status, "done")==0) ? "Đã xong" : 
+        (strcmp(task->status, "overdue")==0) ? "Quá hạn" : "Đang làm",
+        get_status_icon(task->status));
+
+    /* Times */
+    char buf[64];
+    if (task->start_time > 0) {
+        time_utils_format_vietnamese(task->start_time, buf, sizeof(buf));
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "<i>🕒 Bắt đầu:</i> %s\n", buf);
+    }
+    
+    if (task->due_time > 0) {
+        time_utils_format_vietnamese(task->due_time, buf, sizeof(buf));
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "<i>📅 Hạn chót:</i> %s\n", buf);
+        
+        /* Countdown */
+        time_t now = time_utils_get_now();
+        if (strcmp(task->status, "pending") == 0 || strcmp(task->status, "overdue") == 0) {
+            int64_t diff = (int64_t)task->due_time - (int64_t)now;
+            if (diff < 0) {
+                APPEND_SNPRINTF(buffer, buffer_size, offset, "   \xE2\x9A\xA0\xEF\xB8\x8F <b>Trễ %lld ngày</b>\n", (-diff)/86400);
+            } else {
+                APPEND_SNPRINTF(buffer, buffer_size, offset, "   \xE2\x8F\xB3 Còn %lld ngày\n", diff/86400);
+            }
+        }
+    }
+
+    if (task->reminder > 0) {
+        time_utils_format_vietnamese(task->reminder, buf, sizeof(buf));
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "<i>🔔 Nhắc nhở:</i> %s\n", buf);
+    }
+
+    /* Repeat */
+    if (strcmp(task->repeat, "none") != 0 && strlen(task->repeat) > 0) {
+        char rep_buf[64];
+        time_utils_format_repeat(task->repeat, task->repeat_interval, rep_buf, sizeof(rep_buf));
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "<i>🔁 Lặp lại:</i> %s\n", rep_buf);
+    }
+
+    /* Notes */
+    if (strlen(task->notes) > 0) {
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "───────────────\n<i>📝 Ghi chú:</i> \n%s\n", task->notes);
+    }
+
+    /* Meta */
+    time_utils_format_vietnamese(task->created_at, buf, sizeof(buf));
+    APPEND_SNPRINTF(buffer, buffer_size, offset, "───────────────\n<i>🆕 Tạo lúc:</i> %s\n", buf);
+
+    if (task->completed_at > 0) {
+        time_utils_format_vietnamese(task->completed_at, buf, sizeof(buf));
+        APPEND_SNPRINTF(buffer, buffer_size, offset, "<i>✅ Xong lúc:</i> %s\n", buf);
+    }
+
+    dispatcher_set_context_tasks(&task->id, 1);
+    return buffer;
+}
+
 char *format_reminder(const task_record_t *task, char *buffer, size_t buffer_size)
 {
     int written = snprintf(buffer, buffer_size, "⏰ <b>NHẮC NHỞ:</b>\n");

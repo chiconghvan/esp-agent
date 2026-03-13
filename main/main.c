@@ -35,6 +35,8 @@
 #include "firebase_sync.h"
 #include "time_utils.h"
 #include "display_manager.h"
+#include "log_server.h"
+#include "response_formatter.h"
 #include "esp_ota_ops.h"
 #include "driver/gpio.h"
 #include <stdlib.h>
@@ -46,13 +48,9 @@ static const char *TAG = "esp_agent";
  * -------------------------------------------------------------------------- */
 static void print_banner(void)
 {
-    ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "=============================================");
-    ESP_LOGI(TAG, "  ESP-Agent: Trợ lý nhắc việc thông minh");
-    ESP_LOGI(TAG, "  Target: ESP32-C3 Super Mini");
-    ESP_LOGI(TAG, "  Version: %s", FIRMWARE_VERSION);
+    ESP_LOGI(TAG, "  ESP-Agent: Trợ lý nhắc việc (v%s)", FIRMWARE_VERSION);
     ESP_LOGI(TAG, "=============================================");
-    ESP_LOGI(TAG, "");
 }
 
 /* --------------------------------------------------------------------------
@@ -60,18 +58,13 @@ static void print_banner(void)
  * -------------------------------------------------------------------------- */
 static esp_err_t init_nvs(void)
 {
-    ESP_LOGI(TAG, "[1/5] Khởi tạo NVS Flash...");
-
+    ESP_LOGD(TAG, "Khởi tạo NVS Flash...");
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
         err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_LOGW(TAG, "NVS cần erase, đang xóa...");
         ESP_ERROR_CHECK(nvs_flash_erase());
         err = nvs_flash_init();
-    }
-
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "[1/5] NVS Flash OK");
     }
     return err;
 }
@@ -81,43 +74,34 @@ static esp_err_t init_nvs(void)
  * -------------------------------------------------------------------------- */
 static void telegram_polling_loop(void)
 {
-    ESP_LOGI(TAG, "Bắt đầu Telegram polling loop...");
-    ESP_LOGI(TAG, "Đang lắng nghe tin nhắn...");
+    ESP_LOGI(TAG, "Hệ thống sẵn sàng! Lắng nghe tin nhắn...");
 
     telegram_message_t message;
-    static char response[TELEGRAM_MSG_BUFFER_SIZE]; // Dùng static (RAM tĩnh) thay vì Stack để tránh Stack Overflow
+    static char response[TELEGRAM_MSG_BUFFER_SIZE]; 
 
     while (1) {
-        /* Cập nhật đèn LED trạng thái (Sáng khi WiFi OK) */
         bool ready = wifi_manager_is_connected();
-        gpio_set_level(SYSTEM_LED_GPIO, ready ? 0 : 1); // 0 = ON (Active Low)
+        gpio_set_level(SYSTEM_LED_GPIO, ready ? 0 : 1);
 
-        /* Kiểm tra WiFi */
         if (!ready) {
-            ESP_LOGW(TAG, "WiFi mất kết nối, chờ...");
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
 
-        /* Long polling: nhận tin nhắn mới */
         esp_err_t err = telegram_bot_get_update(&message);
-
-        if (err == ESP_ERR_NOT_FOUND) {
-            /* Timeout, không có tin nhắn mới → tiếp tục polling */
-            continue;
-        }
+        if (err == ESP_ERR_NOT_FOUND) continue;
 
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Lỗi nhận tin nhắn: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, "Lỗi kết nối Telegram: %s", esp_err_to_name(err));
             vTaskDelay(pdMS_TO_TICKS(3000));
             continue;
         }
 
-        /* Xử lý Callback Query (nút bấm) trước */
+        /* Xử lý Callback Query (nút bấm) */
         if (message.is_callback) {
+            // ... (giữ nguyên logic xử lý callback)
             if (strcmp(message.callback_query, "cmd_deadline_3d") == 0) {
                 time_range_t range = time_utils_get_three_day_range();
-                /* Cấp phát Heap để tránh Stack Overflow (4KB) */
                 task_record_t *results = (task_record_t *)calloc(10, sizeof(task_record_t));
                 int found = 0;
                 if (results) {
@@ -136,15 +120,11 @@ static void telegram_polling_loop(void)
                     free(results);
                 }
             } else if (strncmp(message.callback_query, "cf_sug|", 7) == 0) {
-                /* Xác nhận gợi ý của AI */
                 const char *confirmed_cmd = message.callback_query + 7;
                 memset(response, 0, sizeof(response));
                 action_dispatcher_handle(confirmed_cmd, response, sizeof(response));
-                if (strlen(response) > 0) {
-                    telegram_bot_send_message(message.chat_id, response);
-                }
+                if (strlen(response) > 0) telegram_bot_send_message(message.chat_id, response);
             } else if (strcmp(message.callback_query, "cmd_undo") == 0) {
-                /* Xử lý nút Undo */
                 memset(response, 0, sizeof(response));
                 action_undo_execute(response, sizeof(response));
                 telegram_bot_send_message(message.chat_id, response);
@@ -152,15 +132,10 @@ static void telegram_polling_loop(void)
             continue;
         }
 
-        /* Bỏ qua tin nhắn rỗng */
-        if (strlen(message.text) == 0) {
-            continue;
-        }
+        if (strlen(message.text) == 0) continue;
 
-        ESP_LOGI(TAG, "");
         ESP_LOGI(TAG, ">>> Tin nhắn từ %s: %s", message.from_first_name, message.text);
 
-        /* Kiểm tra lệnh đặc biệt /status, /last, /t, /deadline, /v */
         if (strcmp(message.text, "/status") == 0) {
             memset(response, 0, sizeof(response));
             token_tracker_format_status(response, sizeof(response));
@@ -172,12 +147,11 @@ static void telegram_polling_loop(void)
                 snprintf(response, sizeof(response), "🔍 <b>Action JSON cuối cùng:</b>\n\n<code>%s</code>", last_json);
                 free(last_json);
             } else {
-                snprintf(response, sizeof(response), "⚠️ Lỗi: Không đủ RAM để hiển thị JSON.");
+                snprintf(response, sizeof(response), "⚠️ Lỗi RAM.");
             }
         } else if (strcmp(message.text, "/v") == 0) {
-            snprintf(response, sizeof(response), "🏷️ <b>Firmware Version:</b> %s\n🔧 <i>Target:</i> ESP32-C3 Super Mini", FIRMWARE_VERSION);
+            snprintf(response, sizeof(response), "🏷️ <b>Version:</b> %s", FIRMWARE_VERSION);
         } else if (strcmp(message.text, "/undo") == 0) {
-            /* Lệnh /undo thủ công */
             memset(response, 0, sizeof(response));
             action_undo_execute(response, sizeof(response));
         } else if (strcmp(message.text, "/deadline") == 0) {
@@ -190,124 +164,59 @@ static void telegram_polling_loop(void)
                     int w = snprintf(response, sizeof(response), "📅 <b>DEADLINE</b>\n");
                     for (int j = 0; j < found; j++) {
                         char db[32]; time_utils_format_date_short(results[j].due_time, db, sizeof(db));
-                        APPEND_SNPRINTF(response, sizeof(response), w, 
-                                      "\n• <b>[#%" PRIu32 "] %s</b> (<i>%s</i>)", results[j].id, results[j].title, db);
+                        APPEND_SNPRINTF(response, sizeof(response), w, "\n• <b>[#%" PRIu32 "] %s</b> (<i>%s</i>)", results[j].id, results[j].title, db);
                     }
                 } else {
-                    snprintf(response, sizeof(response), "✅ Hiện không có deadline nào sắp tới.");
+                    snprintf(response, sizeof(response), "✅ Không có deadline.");
                 }
                 free(results);
             }
-        } else if (strncmp(message.text, "/t", 2) == 0 && (message.text[2] == ' ' || message.text[2] == '\0' || (message.text[2] >= '0' && message.text[2] <= '9'))) {
-            /* Lệnh /t <id1> <id2> ... - hiển thị chi tiết task */
+        } else if (strncmp(message.text, "/t", 2) == 0) {
+            // ... (giữ nguyên logic hiển thị task)
             memset(response, 0, sizeof(response));
             const char *args = message.text + 2;
-            /* Bỏ qua khoảng trắng đầu */
             while (*args == ' ') args++;
-
             if (strlen(args) == 0) {
-                snprintf(response, sizeof(response),
-                    "⚠️ Cú pháp: /t <id1> <id2> ...\n"
-                    "Ví dụ: /t 1 2 3\n"
-                    "Hoặc: /t 1,2,3");
+                snprintf(response, sizeof(response), "⚠️ Cú pháp: /t <id1>");
             } else {
                 task_database_update_overdue();
-                int written = 0;
-                int found = 0;
-                /* Parse IDs: hỗ trợ cách bằng dấu cách, phẩy, chấm phẩy */
-                char buf[256];
-                strncpy(buf, args, sizeof(buf) - 1);
-                buf[sizeof(buf) - 1] = '\0';
-
-                /* Thay dấu phẩy, chấm phẩy thành dấu cách */
-                for (int k = 0; buf[k]; k++) {
-                    if (buf[k] == ',' || buf[k] == ';') buf[k] = ' ';
-                }
-
+                int written = 0, found = 0;
+                char buf[256]; strncpy(buf, args, sizeof(buf)-1); buf[sizeof(buf)-1]='\0';
+                for (int k=0; buf[k]; k++) if (buf[k]==','||buf[k]==';') buf[k]=' ';
                 char *token = strtok(buf, " ");
-                while (token != NULL && (size_t)written < sizeof(response) - 300) {
+                while (token != NULL && (size_t)written < sizeof(response) - 500) {
                     uint32_t tid = (uint32_t)atoi(token);
                     if (tid > 0) {
                         task_record_t task;
                         if (task_database_read(tid, &task) == ESP_OK) {
-                            if (found > 0) {
-                                APPEND_SNPRINTF(response, sizeof(response), written,
-                                    "\n──────────\n");
-                            }
-                            char reminder_buf[64];
-                            char due_buf[64];
-                            char created_buf[64];
-                            char repeat_buf[64];
-                            time_utils_format_vietnamese(task.due_time, due_buf, sizeof(due_buf));
-                            time_utils_format_vietnamese(task.created_at, created_buf, sizeof(created_buf));
-                            time_utils_format_vietnamese(task.reminder, reminder_buf, sizeof(reminder_buf));
-                            time_utils_format_repeat(task.repeat, task.repeat_interval, repeat_buf, sizeof(repeat_buf));
-
-                            APPEND_SNPRINTF(response, sizeof(response), written,
-                                "📌 <b>[#%" PRIu32 "] %s</b>\n"
-                                "<i>🏷️ Phân loại:</i> %s\n"
-                                "<i>📅 Thời hạn:</i> %s\n"
-                                "<i>🔁 Lặp lại:</i> %s\n"
-                                "<i>🕐 Tạo lúc:</i> %s\n"
-                                "<i>⏰ Nhắc nhở:</i> %s\n"
-                                "<i>📝 Ghi chú:</i> %s\n"
-                                "🔵 <i>Trạng thái:</i> %s",
-                                task.id, task.title,
-                                (strcmp(task.type, "meeting") == 0) ? "Cuộc họp" :
-                                (strcmp(task.type, "report") == 0) ? "Báo cáo" :
-                                (strcmp(task.type, "reminder") == 0) ? "Nhắc nhở" :
-                                (strcmp(task.type, "event") == 0) ? "Sự kiện" :
-                                (strcmp(task.type, "anniversary") == 0) ? "Kỉ niệm" : "Khác",
-                                due_buf, repeat_buf, created_buf, reminder_buf,
-                                strlen(task.notes) > 0 ? task.notes : "(không có)",
-                                (strcmp(task.status, "done") == 0) ? "✅ Hoàn thành" :
-                                (strcmp(task.status, "cancelled") == 0) ? "❌ Đã hủy" :
-                                (strcmp(task.status, "overdue") == 0) ? "⏳ Quá hạn" :
-                                "🔵 Đang thực hiện");
+                            if (found > 0) APPEND_SNPRINTF(response, sizeof(response), written, "\n\n");
+                            char detail_buf[800];
+                            format_task_detail_full(&task, detail_buf, sizeof(detail_buf));
+                            APPEND_SNPRINTF(response, sizeof(response), written, "%s", detail_buf);
                             found++;
                         }
                     }
                     token = strtok(NULL, " ");
                 }
-
-                if (found == 0) {
-                    snprintf(response, sizeof(response),
-                        "❓ Không tìm thấy task nào với ID đã cho");
-                }
+                if (found == 0) snprintf(response, sizeof(response), "❓ Không tìm thấy ID");
             }
         } else {
-            /* Xử lý tin nhắn → dispatch action → nhận response */
             memset(response, 0, sizeof(response));
             err = action_dispatcher_handle(message.text, response, sizeof(response));
-
             if (err == ESP_OK && strncmp(response, "SUGGEST|", 8) == 0) {
-                /* AI gợi ý câu hỏi thay vì chitchat */
                 char *suggestion = response + 8;
                 char prompt_buf[RESPONSE_BUFFER_SIZE];
-                snprintf(prompt_buf, sizeof(prompt_buf), "🤔 Có phải ý bạn là:\n\"<i>%.200s</i>\"?", suggestion);
-                
-                char cb_data[64];
-                snprintf(cb_data, sizeof(cb_data), "cf_sug|%.50s", suggestion);
-                telegram_bot_send_inline_keyboard(message.chat_id, prompt_buf, "✅ Đúng vậy", cb_data);
-                memset(response, 0, sizeof(response)); // Không gửi tin nhắn thường nữa
-            }
-
-            if (err != ESP_OK) {
-                ESP_LOGW(TAG, "Xử lý tin nhắn thất bại");
+                snprintf(prompt_buf, sizeof(prompt_buf), "🤔 Có phải bạn muốn:\n\"<i>%.200s</i>\"?", suggestion);
+                char cb_data[64]; snprintf(cb_data, sizeof(cb_data), "cf_sug|%.50s", suggestion);
+                telegram_bot_send_inline_keyboard(message.chat_id, prompt_buf, "✅ Đúng", cb_data);
+                memset(response, 0, sizeof(response));
             }
         }
 
-        /* Gửi response về Telegram */
         if (strlen(response) > 0) {
             err = telegram_bot_send_message(message.chat_id, response);
-            if (err == ESP_OK) {
-                ESP_LOGI(TAG, "<<< Đã gửi response");
-            } else {
-                ESP_LOGE(TAG, "<<< Gửi response thất bại");
-            }
+            if (err == ESP_OK) ESP_LOGI(TAG, "<<< Đã gửi response");
         }
-
-        /* Delay nhỏ để tránh rate limit */
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
@@ -333,6 +242,30 @@ static void init_system_led(void)
  * -------------------------------------------------------------------------- */
 void app_main(void)
 {
+    /* Hook log vào ring buffer (phải gọi TRƯỚC mọi ESP_LOG) */
+    log_server_init();
+
+    /* Thiết lập Log: Chỉ hiện thông tin từ App, ẩn log rác hệ thống */
+    esp_log_level_set("*", ESP_LOG_WARN);
+    esp_log_level_set("esp_agent", ESP_LOG_INFO);
+    esp_log_level_set("telegram_bot", ESP_LOG_INFO);
+    esp_log_level_set("dispatcher", ESP_LOG_INFO);
+    esp_log_level_set("task_db", ESP_LOG_INFO);
+    esp_log_level_set("firebase_sync", ESP_LOG_INFO);
+    esp_log_level_set("openai_client", ESP_LOG_INFO);
+    esp_log_level_set("token_tracker", ESP_LOG_INFO);
+    esp_log_level_set("log_server", ESP_LOG_INFO);
+    esp_log_level_set("action_search", ESP_LOG_INFO);
+    esp_log_level_set("action_create", ESP_LOG_INFO);
+    esp_log_level_set("action_update", ESP_LOG_INFO);
+    esp_log_level_set("action_delete", ESP_LOG_INFO);
+    esp_log_level_set("action_complete", ESP_LOG_INFO);
+    esp_log_level_set("action_query", ESP_LOG_INFO);
+    esp_log_level_set("action_summary", ESP_LOG_INFO);
+    esp_log_level_set("action_detail", ESP_LOG_INFO);
+    esp_log_level_set("action_undo", ESP_LOG_INFO);
+    esp_log_level_set("vector_search", ESP_LOG_INFO);
+
     init_system_led();
     print_banner();
 
@@ -340,92 +273,61 @@ void app_main(void)
     if (display_init(6, 7) != ESP_OK) {
         ESP_LOGW(TAG, "OLED init thất bại, tiếp tục không màn hình");
     }
-    display_boot_progress(5, "Khoi tao NVS...");
+    display_boot_progress(10, "He thong dang khoi dong...");
 
     /* Bước 1: Khởi tạo NVS */
     ESP_ERROR_CHECK(init_nvs());
-    display_boot_progress(20, "Ket noi WiFi...");
 
     /* Bước 2: Kết nối WiFi + SNTP */
-    ESP_LOGI(TAG, "[2/5] Kết nối WiFi...");
+    ESP_LOGD(TAG, "Kết nối WiFi...");
     esp_err_t err = wifi_manager_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi thất bại! Khởi động lại sau 10 giây...");
-        display_boot_progress(20, "WiFi THAT BAI!");
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
     }
-    ESP_LOGI(TAG, "[2/5] WiFi OK");
+
     /* Bước 3: Khởi tạo Database (SPIFFS) */
-    ESP_LOGI(TAG, "[3/5] Khởi tạo database...");
+    ESP_LOGD(TAG, "Khởi tạo database...");
     err = task_database_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Database thất bại! Khởi động lại...");
-        display_boot_progress(50, "DB THAT BAI!");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
     }
-    ESP_LOGI(TAG, "[3/5] Database OK");
-    display_boot_progress(60, "Khoi tao Firebase Sync...");
 
     /* Khởi tạo Firebase Sync Background Queue */
     firebase_sync_init();
 
     /* PULL ON BOOT: Nạp lại CSDL từ Cloud nếu ổ chứa nội gián SPIFFS đang trống */
     if (task_database_get_index()->count == 0) {
-        display_boot_progress(65, "Tuyen vao Firebase...");
-        ESP_LOGI(TAG, "Database trống, bắt đầu tải từ Firebase xuống...");
-        if (firebase_sync_download_all() == ESP_OK) {
-            ESP_LOGI(TAG, "Khôi phục dữ liệu từ Firebase thành công!");
-        }
+        ESP_LOGI(TAG, "Database trống, đang tải từ Cloud...");
+        firebase_sync_download_all();
     } else {
-        /* PUSH ON BOOT: Nếu local có data, ta chủ động đẩy lên Cloud để đảm bảo Cloud luôn cập nhật */
-        ESP_LOGI(TAG, "Phát hiện %d task local, đang đồng bộ lên Cloud...", task_database_get_index()->count);
+        /* PUSH ON BOOT */
         firebase_sync_upload_all();
     }
 
-    display_boot_progress(70, "Token Tracker...");
-
     /* Khởi tạo Token Tracker */
     token_tracker_init();
-    display_boot_progress(75, "Dong bo SNTP...");
 
-    /* Đồng bộ thời gian (Trì hoãn đến cuối để WiFi có thời gian "thở" và lấy được DNS) */
-    ESP_LOGI(TAG, "[*] Đồng bộ thời gian SNTP...");
-    err = wifi_manager_start_sntp();
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "SNTP timeout, tiếp tục với thời gian chưa chính xác");
-    }
+    /* Đồng bộ thời gian */
+    wifi_manager_start_sntp();
 
-    display_boot_progress(80, "Telegram Bot...");
+    /* Khởi động Log Web Server (sau khi WiFi + IP ổn định) */
+    log_server_start();
 
     /* Bước 4: Khởi tạo Telegram Bot */
-    ESP_LOGI(TAG, "[4/5] Khởi tạo Telegram Bot...");
     err = telegram_bot_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Telegram Bot thất bại!");
     }
-    ESP_LOGI(TAG, "[4/5] Telegram Bot OK");
-    display_boot_progress(90, "Reminder...");
 
     /* Bước 5: Bắt đầu Reminder Scheduler */
-    ESP_LOGI(TAG, "[5/5] Bắt đầu Reminder Scheduler...");
     err = reminder_scheduler_start();
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Reminder Scheduler thất bại, nhắc nhở sẽ không hoạt động");
+        ESP_LOGW(TAG, "Reminder Scheduler thất bại");
     }
-    ESP_LOGI(TAG, "[5/5] Reminder Scheduler OK");
-    display_boot_progress(100, "San sang!");
-
-    /* Hiển thị thông tin hệ thống */
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "=============================================");
-    ESP_LOGI(TAG, "  HỆ THỐNG SẴN SÀNG!");
-    ESP_LOGI(TAG, "  Gửi tin nhắn qua Telegram để bắt đầu.");
-    ESP_LOGI(TAG, "  Free heap: %lu bytes",
-             (unsigned long)esp_get_free_heap_size());
-    ESP_LOGI(TAG, "=============================================");
-    ESP_LOGI(TAG, "");
 
     /* Chuyển sang màn hình Idle + start display task */
     vTaskDelay(pdMS_TO_TICKS(500));
@@ -436,8 +338,6 @@ void app_main(void)
     if (wifi_manager_is_connected()) {
         gpio_set_level(SYSTEM_LED_GPIO, 0);
     }
-
-    /* Bỏ qua gửi thông báo Telegram khởi động để tránh làm phiền */
 
     /* Main loop: Telegram long polling */
     telegram_polling_loop();

@@ -78,34 +78,34 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
                     if (old_tasks) {
                         old_tasks[old_tasks_count++] = task;
                     }
-                    strncpy(task.status, "done", sizeof(task.status) - 1);
-                    task.completed_at = time_utils_get_now();
+                    bool is_recurring = (strcmp(task.repeat, "none") != 0 && task.due_time > 0);
+                    
+                    if (is_recurring) {
+                        /* Task lặp lại: Cập nhật hạn mới và reset trạng thái pending */
+                        time_t old_due = task.due_time;
+                        task.due_time = time_utils_next_due(old_due, task.repeat, task.repeat_interval);
+                        if (task.reminder > 0) {
+                            time_t offset = old_due - task.reminder;
+                            task.reminder = task.due_time - offset;
+                        }
+                        task.completed_at = 0;
+                        strncpy(task.status, "pending", sizeof(task.status) - 1);
+                    } else {
+                        strncpy(task.status, "done", sizeof(task.status) - 1);
+                        task.completed_at = time_utils_get_now();
+                    }
                     
                     if (task_database_update(&task) == ESP_OK) {
-                        /* Xử lý lặp lại nếu có */
-                        if (strcmp(task.repeat, "none") != 0 && task.due_time > 0) {
-                            task_record_t next_task = task;
-                            memset(next_task.status, 0, sizeof(next_task.status));
-                            strncpy(next_task.status, "pending", sizeof(next_task.status) - 1);
-                            next_task.completed_at = 0;
-                            next_task.due_time = time_utils_next_due(task.due_time, task.repeat, task.repeat_interval);
-
-                            if (next_task.reminder > 0) {
-                                time_t reminder_offset = task.due_time - task.reminder;
-                                next_task.reminder = next_task.due_time - reminder_offset;
-                            }
-
-                            if (task_database_create(&next_task) == ESP_OK) {
-                                float emb[EMBEDDING_DIM];
-                                if (openai_create_embedding(next_task.title, emb, EMBEDDING_DIM) == ESP_OK) {
-                                    vector_search_save(next_task.id, emb);
-                                }
-                            }
-                        }
-                        
                         if (written < response_size) {
-                            APPEND_SNPRINTF(response, response_size, written, 
-                                " - [#%" PRIu32 "] %s\n", task.id, task.title);
+                            if (is_recurring) {
+                                char next_due_buf[64];
+                                time_utils_format_vietnamese(task.due_time, next_due_buf, sizeof(next_due_buf));
+                                APPEND_SNPRINTF(response, response_size, written, 
+                                    " - [#%" PRIu32 "] %s (lặp lại, hạn mới: %s)\n", task.id, task.title, next_due_buf);
+                            } else {
+                                APPEND_SNPRINTF(response, response_size, written, 
+                                    " - [#%" PRIu32 "] %s\n", task.id, task.title);
+                            }
                         }
                         completed_count++;
                     }
@@ -181,9 +181,23 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
         /* Lưu trạng thái cũ để Undo */
         task_record_t old_task = task;
 
-        /* Đánh dấu hoàn thành */
-        strncpy(task.status, "done", sizeof(task.status) - 1);
-        task.completed_at = time_utils_get_now();
+        bool is_recurring = (strcmp(task.repeat, "none") != 0 && task.due_time > 0);
+        
+        if (is_recurring) {
+            /* Task lặp lại: Cập nhật trực tiếp lên task cũ */
+            time_t old_due = task.due_time;
+            task.due_time = time_utils_next_due(old_due, task.repeat, task.repeat_interval);
+            if (task.reminder > 0) {
+                time_t offset = old_due - task.reminder;
+                task.reminder = task.due_time - offset;
+            }
+            task.completed_at = 0;
+            strncpy(task.status, "pending", sizeof(task.status) - 1);
+        } else {
+            /* Task thường: Đánh dấu hoàn thành */
+            strncpy(task.status, "done", sizeof(task.status) - 1);
+            task.completed_at = time_utils_get_now();
+        }
 
         err = task_database_update(&task);
         if (err != ESP_OK) {
@@ -191,44 +205,24 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
             return err;
         }
 
-        /* Nếu có repeat → tạo task mới cho lần tiếp theo */
-        if (strcmp(task.repeat, "none") != 0 && task.due_time > 0) {
-            task_record_t next_task = task;
-            memset(next_task.status, 0, sizeof(next_task.status));
-            strncpy(next_task.status, "pending", sizeof(next_task.status) - 1);
-            next_task.completed_at = 0;
-            next_task.due_time = time_utils_next_due(
-                task.due_time, task.repeat, task.repeat_interval);
-
-            if (next_task.reminder > 0) {
-                /* Tính reminder mới tương ứng */
-                time_t reminder_offset = task.due_time - task.reminder;
-                next_task.reminder = next_task.due_time - reminder_offset;
-            }
-
-            esp_err_t create_err = task_database_create(&next_task);
-            if (create_err == ESP_OK) {
-                /* Tạo embedding cho task mới (dùng lại title) */
-                float emb[EMBEDDING_DIM];
-                if (openai_create_embedding(next_task.title, emb, EMBEDDING_DIM) == ESP_OK) {
-                    vector_search_save(next_task.id, emb);
-                }
-
-                char next_due_buf[64];
-                time_utils_format_vietnamese(next_task.due_time, next_due_buf, sizeof(next_due_buf));
-                ESP_LOGI(TAG, "Đã tạo task lặp lại #%" PRIu32 ", due: %s",
-                         next_task.id, next_due_buf);
-            }
-        }
-
         /* Lưu undo log */
         action_undo_save(UNDO_COMPLETE, &old_task, 1);
 
         /* Format response */
-        format_task_completed(&task, response, response_size);
+        if (is_recurring) {
+            char next_due_buf[64];
+            time_utils_format_vietnamese(task.due_time, next_due_buf, sizeof(next_due_buf));
+            snprintf(response, response_size, 
+                "\xE2\x9C\x85 Đã hoàn thành công việc định kỳ: <b>%s</b>\n"
+                "\xF0\x9F\x94\x84 Đã tự động dời hạn sang kỳ tiếp theo: <b>%s</b>\n"
+                "<i>(Vẫn giữ nguyên ID #%" PRIu32 ")</i>",
+                task.title, next_due_buf, task.id);
+        } else {
+            format_task_completed(&task, response, response_size);
+        }
 
         /* Cập nhật màn hình LCD */
-        display_show_result("Hoan thanh", task.id, task.title);
+        display_show_result(is_recurring ? "Lap lai" : "Hoan thanh", task.id, task.title);
 
         return ESP_OK;
     }

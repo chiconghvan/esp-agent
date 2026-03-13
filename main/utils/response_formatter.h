@@ -29,6 +29,8 @@ char *format_task_deleted(const task_record_t *task, char *buffer, size_t buffer
 char *format_task_updated(const task_record_t *task, const char *changes,
                           char *buffer, size_t buffer_size);
 
+char *format_task_detail_full(const task_record_t *task, char *buffer, size_t buffer_size);
+
 char *format_reminder(const task_record_t *task, char *buffer, size_t buffer_size);
 
 char *format_not_found(const char *context, char *buffer, size_t buffer_size);

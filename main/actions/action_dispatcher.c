@@ -52,7 +52,7 @@ void action_dispatcher_get_last_json(char *buffer, size_t buffer_size)
  * ========================================================================== */
 static const char *PROMPT_B1 =
     "Bạn là bộ phân loại ý định cho hệ thống quản lý công việc.\n"
-    "Thời gian hiện tại: %s, %s (%s).\n"
+    "%s\n"
     "Context IDs đang hiển thị: [%s].\n\n"
     "Phân loại tin nhắn vào ĐÚNG 1 trong 9 intent:\n\n"
     "MUTATION:\n"
@@ -85,10 +85,11 @@ static const char *PROMPT_B1 =
  * ========================================================================== */
 
 static const char *PROMPT_B2_CREATE =
-    "Bạn là parser dữ liệu task. Hiện tại: %s, %s (%s).\n"
+    "Bạn là parser tạo task.\n"
+    "%s\n"
     "Intent: CREATE_TASK\n"
     "User: \"%s\"\n\n"
-    "Parse thông tin và trả JSON:\n"
+    "Trả JSON:\n"
     "{\n"
     "  \"title\": \"string\",\n"
     "  \"type\": \"meeting|report|reminder|event|anniversary|other\",\n"
@@ -100,46 +101,47 @@ static const char *PROMPT_B2_CREATE =
     "  \"notes\": \"string\"\n"
     "}\n\n"
     "QUY TẮC:\n"
-    "1. Sự kiện nhiều ngày: start_time=ngày bắt đầu, due_time=ngày kết thúc\n"
-    "2. Chỉ 1 ngày: due_time=ngày đó, start_time=null\n"
-    "3. type: báo cáo=report, họp=meeting, nhắc=reminder, sự kiện/cưới/tiệc=event, kỉ niệm/sinh nhật=anniversary\n"
-    "4. Không nói giờ → mặc định 08:00\n"
-    "5. Nếu user chỉ nói ngày/tháng mà không có năm, LUÔN dùng tháng/năm hiện tại. TUYỆT ĐỐI KHÔNG dùng năm 1970.\n"
+    "1. Sự kiện nhiều ngày: start_time=ngày đầu, due_time=ngày cuối. Chỉ 1 ngày: due_time=ngày đó, start_time=null.\n"
+    "2. Loại: báo cáo=report, họp=meeting, nhắc=reminder, sự kiện/cưới/tiệc=event, kỉ niệm/sinh nhật=anniversary.\n"
+    "3. Không nói giờ → mặc định 08:00.\n"
+    "4. Thiếu năm → dùng năm hiện tại. TUYỆT ĐỐI KHÔNG dùng năm 1970.\n"
+    "5. TRA BẢNG thời gian ở trên cho \"ngày mai\", \"thứ 6 tuần này\"... KHÔNG tự tính.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_QUERY =
-    "Bạn là parser truy vấn. Hiện tại: %s, %s (%s).\n"
+    "Bạn là parser truy vấn.\n"
+    "%s\n"
     "Intent: QUERY_TASKS\n"
     "User: \"%s\"\n\n"
-    "Phân tích CẨN THẬN tất cả điều kiện. Mỗi điều kiện = 1 filter.\n\n"
-    "QUAN TRỌNG: Tất cả giá trị time PHẢI là ISO8601 thực tế (VD: 2026-03-04T00:00:00).\n"
-    "Dựa vào ngày hôm nay để tính toán chính xác.\n"
-    "KHÔNG dùng placeholder như {now}, {today}, {monday}.\n\n"
     "Trả JSON:\n"
     "{\n"
     "  \"response_type\": \"list|count\",\n"
-    "  \"label\": \"string mô tả ngắn gọn\",\n"
+    "  \"label\": \"mô tả ngắn gọn\",\n"
     "  \"filters\": [\n"
-    "    {\"field\": \"due_time|start_time|created_at|type|status|repeat|repeat_interval|reminder\",\n"
+    "    {\"field\": \"due_time|start_time|created_at|type|status|repeat\",\n"
     "     \"op\": \"equals|not_equals|before|after|between|is_not_null|is_null\",\n"
-    "     \"value\": \"string|ISO8601\", \"value_end\": \"ISO8601 nếu between\"}\n"
+    "     \"value\": \"ISO8601|string\", \"value_end\": \"ISO8601 nếu between\"}\n"
     "  ],\n"
     "  \"sort\": \"due_time_asc|due_time_desc|created_at_desc|null\",\n"
     "  \"limit\": null\n"
     "}\n\n"
-    "QUY TẮC:\n"
-    "1. LUÔN thêm status=pending trừ khi user nói rõ. (Hệ thống tự động gộp pending và overdue. Nếu user CHỈ hỏi task quá hạn, dùng status=overdue và KHÔNG CẦN thêm filter due_time).\n"
-    "2. Hỏi về task LẶP LẠI → filter repeat, KHÔNG thêm filter due_time (vì due_time gốc có thể ở quá khứ)\n"
-    "3. KHOẢNG RỘNG (Tuần, Tháng): BẮT BUỘC dùng `op=\"between\"` với `value`=bắt đầu, `value_end`=kết thúc. Một tuần LUÔN là Thứ 2 (00:00:00) đến Chủ Nhật (23:59:59).\n"
-    "4. CÁCH TÍNH 'Tuần này': Phải tự suy luận ra ngày Thứ 2 và Chủ Nhật của tuần chứa ngày HIỆN TẠI.\n"
-    "   Ví dụ: Hôm nay là Thứ 4 (11/03/2026) -> Mức 'Tuần này' = 2026-03-09T00:00:00 đến 2026-03-15T23:59:59.\n"
-    "5. NGÀY CỤ THỂ (Mai, Hôm nay): BẮT BUỘC dùng `op=\"between\"` 00:00:00 đến 23:59:59 của ngày đó.\n"
-    "6. TUYỆT ĐỐI KHÔNG DÙNG `op=\"before\"` HOẶC `op=\"after\"` KHI XOAY QUANH (TUẦN/THÁNG/NGÀY) DỄ GÂY LỌT/SÓT TASK CŨ.\n"
-    "7. User đề cập LOẠI task (báo cáo, họp, nhắc...) → LUÔN thêm filter type tương ứng (report, meeting, reminder, anniversary, event, other)\n"
+    "QUY TẮC THỜI GIAN (TRA BẢNG, KHÔNG TỰ TÍNH):\n"
+    "1. \"hôm nay\" → between Hôm_nay+T00:00:00 → Hôm_nay+T23:59:59.\n"
+    "2. \"ngày mai\" → between Ngày_mai+T00:00:00 → Ngày_mai+T23:59:59.\n"
+    "3. \"tuần này\"/\"trong tuần\" → between T2+T00:00:00 → CN+T23:59:59.\n"
+    "4. \"cuối tuần\"/\"đến cuối tuần\"/\"hết tuần\"/\"từ nay đến cuối tuần\" → between Hôm_nay+T00:00:00 → CN+T23:59:59.\n"
+    "5. \"tháng này\" → between Đầu_tháng+T00:00:00 → Cuối_tháng+T23:59:59.\n"
+    "6. NGÀY CỤ THỂ khác → between 00:00:00 → 23:59:59 của ngày đó.\n"
+    "7. TRUY VẤN MỞ (\"sắp tới\", \"tiếp theo\", \"gần nhất\") → op=\"after\" value=Bây_giờ, sort=due_time_asc. KHÔNG bịa mốc kết thúc.\n"
+    "8. Task LẶP LẠI → filter repeat, KHÔNG thêm due_time.\n\n"
+    "QUY TẮC FILTER:\n"
+    "9. LUÔN thêm status=pending (trừ khi user nói rõ). Hệ thống tự gộp pending+overdue. User CHỈ hỏi \"quá hạn\" → status=overdue, không cần due_time.\n"
+    "10. User đề cập LOẠI (báo cáo, họp, nhắc...) → thêm filter type (report, meeting, reminder, anniversary, event, other).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_MUTATE =
-    "Bạn là parser hành động. Hiện tại: %s, %s (%s).\n"
+    "Bạn là parser hành động.\n"
+    "%s\n"
     "Intent: %s\n"
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
@@ -161,27 +163,30 @@ static const char *PROMPT_B2_MUTATE =
     "    \"notes\": \"string|null\"\n"
     "  }\n"
     "}\n\n"
-    "QUY TẮC CHỌN TASK (TUÂN THỦ TUYỆT ĐỐI):\n"
-    "1. Nếu user NÓI TÊN task (VD: 'hoàn thành test2', 'sửa task nhập dvc') → BẮT BUỘC `task_ids`: [], và trích xuất tên đó vào `search_query` (VD: \"test2\"). KHÔNG dùng Context IDs.\n"
-    "2. Nếu user NÓI SỐ ID (VD: 'xóa task 5') → `task_ids`: [5], `search_query`: null.\n"
-    "3. CHỈ KHI user dùng từ chỉ định ('nó', 'đó', 'này') hoặc KHÔNG nêu tên/ID → MỚI chép nguyên mảng Context IDs vào `task_ids`.\n"
-    "QUY TẮC CẬP NHẬT & THỜI GIAN:\n"
-    "1. UPDATE_TASK: field không thay đổi → báo null. CHỈ dùng \"none\" nếu user bảo XÓA/BỎ field đó.\n"
-    "2. DELETE_TASK: hủy/bỏ = soft, xóa hẳn = hard.\n"
-    "3. THỜI GIAN: Bị thiếu năm/tháng → Tự nội suy theo năm hiện tại (2026). TUYỆT ĐỐI KHÔNG BAO GIỜ dùng năm 1970.\n"
+    "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
+    "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
+    "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\".\n"
+    "3. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
+    "4. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
+    "CẬP NHẬT & THỜI GIAN:\n"
+    "5. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
+    "6. DELETE: hủy/bỏ=soft, xóa hẳn=hard.\n"
+    "7. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
+    "8. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
-    "Bạn là parser truy vấn chi tiết. Hiện tại: %s, %s (%s).\n"
+    "Bạn là parser truy vấn chi tiết.\n"
+    "%s\n"
     "Intent: GET_TASK_DETAIL\n"
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
     "Trả JSON:\n"
     "{\"task_ids\": [number], \"search_query\": \"string nếu mô tả tên task\"}\n\n"
     "QUY TẮC (TUÂN THỦ TUYỆT ĐỐI):\n"
-    "1. Nếu user NÓI SỐ ID RÕ RÀNG (\"task 3\", \"#5\") → `task_ids`: [số đó], `search_query`: null.\n"
-    "2. Nếu user NÓI TÊN task (\"sinh nhật Linh\", \"báo cáo X\") → `task_ids`: [], `search_query`: \"tên task\". KHÔNG dùng Context IDs.\n"
-    "3. CHỈ KHI user dùng đại từ ('nó', 'đó', 'này') hoặc KHÔNG nêu tên/số → MỚI chép Context IDs vào `task_ids`.\n"
+    "1. User NÓI SỐ ID (\"task 3\", \"#5\") → task_ids:[số đó], search_query:null.\n"
+    "2. User NÓI TÊN (\"sinh nhật Linh\", \"báo cáo X\") → task_ids:[], search_query:\"tên\". KHÔNG dùng Context IDs.\n"
+    "3. User dùng đại từ (nó/đó/này) hoặc KHÔNG nêu tên/số → chép Context IDs vào task_ids.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SEARCH =
@@ -193,12 +198,13 @@ static const char *PROMPT_B2_SEARCH =
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =
-    "Bạn là parser thống kê. Hiện tại: %s, %s (%s).\n"
+    "Bạn là parser thống kê.\n"
+    "%s\n"
     "Intent: TASK_SUMMARY\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
     "{\"period_start\": \"ISO8601|null\", \"period_end\": \"ISO8601|null\"}\n"
-    "Mặc định: đầu tháng → hôm nay.\n"
+    "Mặc định: đầu tháng → hôm nay. TRA BẢNG thời gian ở trên.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_CHITCHAT =
@@ -222,6 +228,64 @@ static void build_context_ids_str(char *buf, size_t buf_size)
                            "%" PRIu32 "%s", s_context_task_ids[i],
                            (i == s_context_task_count - 1) ? "" : ", ");
     }
+}
+
+/**
+ * Build rich time context string for prompts.
+ * Pre-computes all key reference dates so AI only needs to look up.
+ * Output example:
+ *   Bây giờ: 2026-03-12T10:33:20 (Thứ 5, 12/03/2026)
+ *   Hôm nay: 2026-03-12 | Ngày mai: 2026-03-13 (Thứ 6)
+ *   Tuần này: T2=2026-03-09 → CN=2026-03-15
+ *   Tháng này: 2026-03-01 → 2026-03-31
+ */
+static void build_time_context(char *buf, size_t buf_size)
+{
+    time_t now = time_utils_get_now();
+    char iso_now[32], date_now[32], weekday_now[32];
+    time_utils_format_iso8601(now, iso_now, sizeof(iso_now));
+    time_utils_format_date_short(now, date_now, sizeof(date_now));
+    time_utils_get_weekday_name(now, weekday_now, sizeof(weekday_now));
+
+    /* Tomorrow */
+    time_range_t tomorrow = time_utils_get_tomorrow_range();
+    char iso_tomorrow[32], weekday_tomorrow[32];
+    time_utils_format_iso8601(tomorrow.start, iso_tomorrow, sizeof(iso_tomorrow));
+    /* Chỉ lấy phần ngày YYYY-MM-DD */
+    iso_tomorrow[10] = '\0';
+    time_utils_get_weekday_name(tomorrow.start, weekday_tomorrow, sizeof(weekday_tomorrow));
+
+    /* This week: Monday → Sunday */
+    time_range_t week = time_utils_get_this_week_range();
+    char iso_mon[32], iso_sun[32];
+    time_utils_format_iso8601(week.start, iso_mon, sizeof(iso_mon));
+    iso_mon[10] = '\0'; /* YYYY-MM-DD */
+    time_utils_format_iso8601(week.end, iso_sun, sizeof(iso_sun));
+    iso_sun[10] = '\0';
+
+    /* This month */
+    time_range_t month = time_utils_get_this_month_range();
+    char iso_month_start[32], iso_month_end[32];
+    time_utils_format_iso8601(month.start, iso_month_start, sizeof(iso_month_start));
+    iso_month_start[10] = '\0';
+    time_utils_format_iso8601(month.end, iso_month_end, sizeof(iso_month_end));
+    iso_month_end[10] = '\0';
+
+    /* Today date only */
+    char iso_today[32];
+    time_range_t today = time_utils_get_today_range();
+    time_utils_format_iso8601(today.start, iso_today, sizeof(iso_today));
+    iso_today[10] = '\0';
+
+    snprintf(buf, buf_size,
+        "Bây giờ: %s (%s, %s)\n"
+        "Hôm nay: %s | Ngày mai: %s (%s)\n"
+        "Tuần này: T2=%s → CN=%s\n"
+        "Tháng này: %s → %s",
+        iso_now, weekday_now, date_now,
+        iso_today, iso_tomorrow, weekday_tomorrow,
+        iso_mon, iso_sun,
+        iso_month_start, iso_month_end);
 }
 
 /** Parse intent string → enum */
@@ -250,17 +314,14 @@ static esp_err_t step_b1_classify(const char *user_message,
                                    float *out_confidence,
                                    char **out_b1_json)
 {
-    char date_buf[32], weekday_buf[32], iso_buf[32], context_ids[128];
-    time_t now = time_utils_get_now();
-    time_utils_format_date_short(now, date_buf, sizeof(date_buf));
-    time_utils_get_weekday_name(now, weekday_buf, sizeof(weekday_buf));
-    time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
+    char time_context[384], context_ids[128];
+    build_time_context(time_context, sizeof(time_context));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     /* Build prompt B1 */
-    char *prompt = (char *)malloc(2048);
+    char *prompt = (char *)malloc(2560);
     if (!prompt) return ESP_ERR_NO_MEM;
-    snprintf(prompt, 2048, PROMPT_B1, iso_buf, date_buf, weekday_buf, context_ids);
+    snprintf(prompt, 2560, PROMPT_B1, time_context, context_ids);
 
     /* Gọi AI */
     char llm_response[512];
@@ -298,11 +359,8 @@ static esp_err_t step_b2_parse(action_type_t intent,
                                 const char *user_message,
                                 char **out_data_json)
 {
-    char date_buf[32], weekday_buf[32], iso_buf[32], context_ids[128];
-    time_t now = time_utils_get_now();
-    time_utils_format_date_short(now, date_buf, sizeof(date_buf));
-    time_utils_get_weekday_name(now, weekday_buf, sizeof(weekday_buf));
-    time_utils_format_iso8601(now, iso_buf, sizeof(iso_buf));
+    char time_context[384], context_ids[128];
+    build_time_context(time_context, sizeof(time_context));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     char *prompt = (char *)malloc(3072);
@@ -311,32 +369,32 @@ static esp_err_t step_b2_parse(action_type_t intent,
     switch (intent) {
         case ACTION_CREATE_TASK:
             snprintf(prompt, 3072, PROMPT_B2_CREATE,
-                     iso_buf, date_buf, weekday_buf, user_message);
+                     time_context, user_message);
             break;
 
         case ACTION_QUERY_TASKS:
             snprintf(prompt, 3072, PROMPT_B2_QUERY,
-                     iso_buf, date_buf, weekday_buf, user_message);
+                     time_context, user_message);
             break;
 
         case ACTION_UPDATE_TASK:
             snprintf(prompt, 3072, PROMPT_B2_MUTATE,
-                     iso_buf, date_buf, weekday_buf, "UPDATE_TASK", user_message, context_ids);
+                     time_context, "UPDATE_TASK", user_message, context_ids);
             break;
 
         case ACTION_COMPLETE_TASK:
             snprintf(prompt, 3072, PROMPT_B2_MUTATE,
-                     iso_buf, date_buf, weekday_buf, "COMPLETE_TASK", user_message, context_ids);
+                     time_context, "COMPLETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_DELETE_TASK:
             snprintf(prompt, 3072, PROMPT_B2_MUTATE,
-                     iso_buf, date_buf, weekday_buf, "DELETE_TASK", user_message, context_ids);
+                     time_context, "DELETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_GET_DETAIL:
             snprintf(prompt, 3072, PROMPT_B2_DETAIL,
-                     iso_buf, date_buf, weekday_buf, user_message, context_ids);
+                     time_context, user_message, context_ids);
             break;
 
         case ACTION_SEARCH_SEMANTIC:
@@ -346,7 +404,7 @@ static esp_err_t step_b2_parse(action_type_t intent,
 
         case ACTION_TASK_SUMMARY:
             snprintf(prompt, 3072, PROMPT_B2_SUMMARY,
-                     iso_buf, date_buf, weekday_buf, user_message);
+                     time_context, user_message);
             break;
 
         case ACTION_CHITCHAT:

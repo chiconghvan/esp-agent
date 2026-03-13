@@ -106,89 +106,11 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
             continue;
         }
 
-        /* Format chi tiết đầy đủ */
-        APPEND_SNPRINTF(response, response_size, offset,
-            "\xF0\x9F\x93\x9D *Chi tiết task #%lu:*\n"
-            "\xF0\x9F\x93\x8C Tiêu đề: %s\n"
-            "\xF0\x9F\x93\x82 Loại: %s\n"
-            "\xF0\x9F\x93\x8B Trạng thái: %s\n",
-            (unsigned long)task.id,
-            task.title,
-            task.type,
-            task.status);
-
-        /* Thời gian bắt đầu */
-        if (task.start_time > 0) {
-            char buf[32];
-            time_utils_format_vietnamese(task.start_time, buf, sizeof(buf));
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xF0\x9F\x95\x90 Bắt đầu: %s\n", buf);
-        }
-
-        /* Thời hạn */
-        if (task.due_time > 0) {
-            char buf[32];
-            time_utils_format_vietnamese(task.due_time, buf, sizeof(buf));
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xF0\x9F\x93\x85 Thời hạn: %s\n", buf);
-
-            /* Tính số ngày còn lại */
-            time_t now = time_utils_get_now();
-            int days_left = (int)((task.due_time - now) / 86400);
-            if (strcmp(task.status, "pending") == 0) {
-                if (days_left < 0) {
-                    APPEND_SNPRINTF(response, response_size, offset,
-                        "\xE2\x9A\xA0\xEF\xB8\x8F *Quá hạn %d ngày!*\n", -days_left);
-                } else if (days_left == 0) {
-                    APPEND_SNPRINTF(response, response_size, offset,
-                        "\xE2\x8F\xB0 *Hôm nay là hạn chót!*\n");
-                } else {
-                    APPEND_SNPRINTF(response, response_size, offset,
-                        "\xE2\x8F\xB3 Còn %d ngày\n", days_left);
-                }
-            }
-        }
-
-        /* Nhắc nhở */
-        if (task.reminder > 0) {
-            char buf[32];
-            time_utils_format_vietnamese(task.reminder, buf, sizeof(buf));
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xE2\x8F\xB0 Nhắc nhở: %s\n", buf);
-        }
-
-        /* Lặp lại */
-        if (strcmp(task.repeat, "none") != 0 && strlen(task.repeat) > 0) {
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xF0\x9F\x94\x84 Lặp lại: %s (mỗi %d)\n",
-                task.repeat, task.repeat_interval);
-        }
-
-        /* Ghi chú */
-        if (strlen(task.notes) > 0) {
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xF0\x9F\x93\x9D Ghi chú: %s\n", task.notes);
-        }
-
-        /* Thời điểm tạo */
-        {
-            char buf[32];
-            time_utils_format_vietnamese(task.created_at, buf, sizeof(buf));
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xF0\x9F\x95\x90 Tạo lúc: %s\n", buf);
-        }
-
-        /* Hoàn thành */
-        if (task.completed_at > 0) {
-            char buf[32];
-            time_utils_format_vietnamese(task.completed_at, buf, sizeof(buf));
-            APPEND_SNPRINTF(response, response_size, offset,
-                "\xE2\x9C\x85 Hoàn thành: %s\n", buf);
-        }
-
-        if (i < id_count - 1) {
-            APPEND_SNPRINTF(response, response_size, offset, "\n");
-        }
+        if (i > 0) APPEND_SNPRINTF(response, response_size, offset, "\n");
+        
+        char detail_buf[800];
+        format_task_detail_full(&task, detail_buf, sizeof(detail_buf));
+        APPEND_SNPRINTF(response, response_size, offset, "%s", detail_buf);
     }
 
     return ESP_OK;

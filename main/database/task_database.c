@@ -569,7 +569,7 @@ esp_err_t task_database_query_by_time(time_t start, time_t end,
         }
     }
 
-    ESP_LOGI(TAG, "Query by time: tìm thấy %d tasks", *found_count);
+    ESP_LOGD(TAG, "Query by time: tìm thấy %d tasks", *found_count);
     return ESP_OK;
 }
 

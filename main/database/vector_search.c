@@ -229,8 +229,8 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
                 
                 similarity = (alpha * semantic_score) + ((1.0f - alpha) * lexical_score);
                 
-                ESP_LOGI(TAG, "Hybrid task #%lu: sem=%.3f, lex=%.3f, alpha=%.2f -> final=%.3f", 
-                         (unsigned long)task_id, semantic_score, lexical_score, alpha, similarity);
+                ESP_LOGI(TAG, "Comparing with #%lu [%s]: sem=%.3f, lex=%.3f, alpha=%.2f -> final=%.3f", 
+                         (unsigned long)task_id, task_data.title, semantic_score, lexical_score, alpha, similarity);
             }
         }
 
@@ -263,8 +263,13 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
 
     ESP_LOGI(TAG, "Semantic search: tìm thấy %d kết quả", *found_count);
     for (int i = 0; i < *found_count; i++) {
-        ESP_LOGI(TAG, "  [%d] task_id=%lu, similarity=%.4f",
-                 i + 1, (unsigned long)results[i].task_id, results[i].similarity);
+        task_record_t res_task;
+        char title_buf[32] = "unknown";
+        if (task_database_read(results[i].task_id, &res_task) == ESP_OK) {
+            strncpy(title_buf, res_task.title, sizeof(title_buf)-1);
+        }
+        ESP_LOGI(TAG, "  [%d] task_id=%lu, sim=%.4f, title=[%s]",
+                 i + 1, (unsigned long)results[i].task_id, results[i].similarity, title_buf);
     }
     return ESP_OK;
 }
