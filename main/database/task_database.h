@@ -24,7 +24,7 @@
 typedef struct {
     uint32_t id;                           /**< ID task (auto-increment) */
     char title[TASK_TITLE_MAX_LEN];        /**< Tiêu đề task */
-    char type[16];                         /**< Loại: meeting/report/reminder/deadline/event/other */
+    char type[16];                         /**< Loại: meeting/report/reminder/event/anniversary/other */
     char status[16];                       /**< Trạng thái: pending/done/cancelled */
     time_t created_at;                     /**< Thời điểm tạo */
     time_t start_time;                     /**< Thời gian bắt đầu (0 = không có) */

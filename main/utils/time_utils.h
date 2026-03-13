@@ -93,6 +93,13 @@ time_range_t time_utils_get_tomorrow_range(void);
 time_range_t time_utils_get_this_week_range(void);
 
 /**
+ * @brief Lấy time range cho "tuần sau" (Thứ 2 → Chủ nhật của tuần kế tiếp)
+ *
+ * @return time_range_t Khoảng thời gian tuần sau
+ */
+time_range_t time_utils_get_next_week_range(void);
+
+/**
  * @brief Lấy time range cho "tháng này" (ngày 1 → cuối tháng)
  *
  * @return time_range_t Khoảng thời gian tháng này

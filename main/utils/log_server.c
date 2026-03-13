@@ -30,6 +30,7 @@ static const char *TAG = "log_server";
 static char s_log_ring[LOG_MAX_LINES][LOG_MAX_LINE_LEN];
 static int  s_log_head  = 0;   /* Vị trí ghi tiếp theo  */
 static int  s_log_count = 0;   /* Số dòng đã lưu        */
+static uint32_t s_global_log_counter = 0; /* Tổng số log đã sinh ra */
 
 /* ──── Original vprintf function ──── */
 static vprintf_like_t s_original_vprintf = NULL;
@@ -63,6 +64,7 @@ static int log_vprintf_hook(const char *fmt, va_list args)
 
     s_log_head = (s_log_head + 1) % LOG_MAX_LINES;
     if (s_log_count < LOG_MAX_LINES) s_log_count++;
+    s_global_log_counter++;
 
     return ret;
 }
@@ -88,20 +90,22 @@ static const char *LOG_HTML =
     "<h3>&#128225; ESP-Agent Log <span id=\"st\" style=\"color:#8b949e;font-weight:normal\"></span></h3>"
     "<div id=\"log\">Loading...</div>"
     "<script>"
-    "var d=document.getElementById('log'),st=document.getElementById('st');"
+    "var d=document.getElementById('log'),st=document.getElementById('st'),c=0;"
     "function poll(){"
-    "fetch('/api/log').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(data=>{"
-    "var h='';data.forEach(l=>{"
-    "var c='I';"
-    "if(l.indexOf('W (')>-1||l.indexOf('W:')>-1)c='W';"
-    "else if(l.indexOf('E (')>-1||l.indexOf('E:')>-1)c='E';"
-    "else if(l.indexOf('D (')>-1||l.indexOf('D:')>-1)c='D';"
-    "h+='<span class=\"'+c+'\">'+l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</span>';"
+    "fetch('/api/log?c='+c).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(data=>{"
+    "if(data.l.length>0){"
+    "var isAtBottom=(d.scrollHeight-d.scrollTop<=d.clientHeight+50);"
+    "if(c===0||data.c-c>50)d.innerHTML='';"
+    "var h='';data.l.forEach(l=>{"
+    "var k='I';if(l.indexOf('W (')>-1||l.indexOf('W:')>-1)k='W';else if(l.indexOf('E (')>-1||l.indexOf('E:')>-1)k='E';else if(l.indexOf('D (')>-1||l.indexOf('D:')>-1)k='D';"
+    "h+='<span class=\"'+k+'\">'+l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</span>';"
     "});"
-    "var isAtBottom=(d.scrollHeight - d.scrollTop <= d.clientHeight + 50);"
-    "d.innerHTML=h;"
-    "if(isAtBottom) d.scrollTop=d.scrollHeight;"
-    "st.textContent='('+data.length+' lines)';"
+    "d.insertAdjacentHTML('beforeend',h);"
+    "while(d.childElementCount>100)d.removeChild(d.firstChild);"
+    "if(isAtBottom)d.scrollTop=d.scrollHeight;"
+    "c=data.c;"
+    "}"
+    "st.textContent='('+c+' lines)';"
     "}).catch(e=>{st.textContent='(offline)';console.error('Log fetch error:',e);});"
     "}"
     "poll();setInterval(poll,2000);"
@@ -125,18 +129,38 @@ static esp_err_t log_page_handler(httpd_req_t *req)
 
 static esp_err_t log_api_handler(httpd_req_t *req)
 {
+    /* Parse query string ?c=... để lấy cursor */
+    char query[32];
+    uint32_t cursor = 0;
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char param[16];
+        if (httpd_query_key_value(query, "c", param, sizeof(param)) == ESP_OK) {
+            cursor = (uint32_t)atoi(param);
+        }
+    }
+
     /* Thiết lập Header Chunked Transfer */
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-    /* Bắt đầu JSON array */
-    httpd_resp_send_chunk(req, "[", 1);
+    /* Tính toán số log cần gửi (chỉ gửi log mới tính từ cursor) */
+    uint32_t oldest_cursor = s_global_log_counter - s_log_count;
+    if (cursor < oldest_cursor || cursor > s_global_log_counter) {
+        cursor = oldest_cursor; /* Client bị bỏ lại quá xa, gửi lại từ đầu buffer */
+    }
 
-    int start = (s_log_count < LOG_MAX_LINES) ? 0 : s_log_head;
-    char line_buf[LOG_MAX_LINE_LEN + 32];
+    int send_count = s_global_log_counter - cursor;
 
-    for (int i = 0; i < s_log_count; i++) {
-        int idx = (start + i) % LOG_MAX_LINES;
+    /* Bắt đầu JSON object {"c": <counter>, "l": [...arrays]} */
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"c\":%" PRIu32 ",\"l\":[", s_global_log_counter);
+    httpd_resp_send_chunk(req, buf, strlen(buf));
+
+    int ring_start = (s_log_head - s_log_count + LOG_MAX_LINES) % LOG_MAX_LINES;
+    int start_i = s_log_count - send_count;
+
+    for (int i = 0; i < send_count; i++) {
+        int idx = (ring_start + start_i + i) % LOG_MAX_LINES;
         
         /* Build từng item JSON an toàn */
         char item_buf[LOG_MAX_LINE_LEN * 2 + 8]; /* Buffer dư để escape */
@@ -159,12 +183,15 @@ static esp_err_t log_api_handler(httpd_req_t *req)
         item_buf[offset++] = '"';
         
         /* Gửi từng dòng một (chunk) */
-        httpd_resp_send_chunk(req, item_buf, offset);
+        if (httpd_resp_send_chunk(req, item_buf, offset) != ESP_OK) {
+            ESP_LOGD(TAG, "Ngắt kết nối khi đang gửi chunk (Client đã thoát)");
+            return ESP_FAIL; /* Break thẳng và bỏ qua đoạn gửi kết thúc array JSON */
+        }
     }
 
-    /* Kết thúc JSON array */
-    httpd_resp_send_chunk(req, "]", 1);
-    /* Gửi chunk rỗng để kết thúc response */
+    /* Kết thúc JSON object */
+    httpd_resp_send_chunk(req, "]}", 2);
+    /* Gửi chunk rỗng để báo hiệu kết thúc HTTP Transfer */
     httpd_resp_send_chunk(req, NULL, 0);
 
     return ESP_OK;

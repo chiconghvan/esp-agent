@@ -105,7 +105,8 @@ static const char *PROMPT_B2_CREATE =
     "2. Loại: báo cáo=report, họp=meeting, nhắc=reminder, sự kiện/cưới/tiệc=event, kỉ niệm/sinh nhật=anniversary.\n"
     "3. Không nói giờ → mặc định 08:00.\n"
     "4. Thiếu năm → dùng năm hiện tại. TUYỆT ĐỐI KHÔNG dùng năm 1970.\n"
-    "5. TRA BẢNG thời gian ở trên cho \"ngày mai\", \"thứ 6 tuần này\"... KHÔNG tự tính.\n"
+    "5. TRA BẢNG thời gian ở trên cho \"ngày mai\", \"tuần sau\"... KHÔNG tự tính.\n"
+    "6. Chu kỳ lặp (hàng tuần/tháng/quý): Thời hạn (due_time) PHẢI là kỳ KẾ TIẾP trong TƯƠNG LAI. Ví dụ: Nếu hôm nay (T6) user bảo 'thứ 2 hàng tuần', thì due_time phải ở TUẦN SAU (T2=...).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_QUERY =
@@ -118,8 +119,8 @@ static const char *PROMPT_B2_QUERY =
     "  \"response_type\": \"list|count\",\n"
     "  \"label\": \"mô tả ngắn gọn\",\n"
     "  \"filters\": [\n"
-    "    {\"field\": \"due_time|start_time|created_at|type|status|repeat\",\n"
-    "     \"op\": \"equals|not_equals|before|after|between|is_not_null|is_null\",\n"
+    "    {\"field\": \"chỉ chọn 1: due_time/start_time/created_at/type/status/repeat\",\n"
+    "     \"op\": \"chỉ chọn 1: equals/not_equals/before/after/between/is_not_null/is_null\",\n"
     "     \"value\": \"ISO8601|string\", \"value_end\": \"ISO8601 nếu between\"}\n"
     "  ],\n"
     "  \"sort\": \"due_time_asc|due_time_desc|created_at_desc|null\",\n"
@@ -135,8 +136,10 @@ static const char *PROMPT_B2_QUERY =
     "7. TRUY VẤN MỞ (\"sắp tới\", \"tiếp theo\", \"gần nhất\") → op=\"after\" value=Bây_giờ, sort=due_time_asc. KHÔNG bịa mốc kết thúc.\n"
     "8. Task LẶP LẠI → filter repeat, KHÔNG thêm due_time.\n\n"
     "QUY TẮC FILTER:\n"
-    "9. LUÔN thêm status=pending (trừ khi user nói rõ). Hệ thống tự gộp pending+overdue. User CHỈ hỏi \"quá hạn\" → status=overdue, không cần due_time.\n"
-    "10. User đề cập LOẠI (báo cáo, họp, nhắc...) → thêm filter type (report, meeting, reminder, anniversary, event, other).\n"
+    "9. LUÔN thêm status=pending (trừ khi user nói rõ). Hệ thống tự gộp pending+overdue. User CHỈ hỏi \"quá hạn\" → status=overdue.\n"
+    "10. Giá trị status TUYỆT ĐỐI CHỈ LÀ: pending, done, cancelled, overdue. User hỏi ĐÃ HOÀN THÀNH → value=\"done\" (KHÔNG DÙNG \"complete\").\n"
+    "11. User đề cập LOẠI (báo cáo, họp, nhắc...) → thêm filter type (report, meeting, reminder, anniversary, event, other).\n"
+    "12. MỖI ĐIỀU KIỆN LÀ 1 OBJECT RIÊNG BIỆT TRONG MẢNG filters. KHÔNG dùng ký tự `|` để gộp nhiều field (TUYỆT ĐỐI KHÔNG làm `status|repeat`).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_MUTATE =
@@ -152,7 +155,7 @@ static const char *PROMPT_B2_MUTATE =
     "  \"delete_mode\": \"soft|hard (chỉ DELETE_TASK)\",\n"
     "  \"updates\": {\n"
     "    \"title\": \"string|null\",\n"
-    "    \"type\": \"string|null\",\n"
+    "    \"type\": \"meeting|report|reminder|event|anniversary|other|null\",\n"
     "    \"due_time\": \"ISO8601|none|null\",\n"
     "    \"start_time\": \"ISO8601|none|null\",\n"
     "    \"reminder\": \"ISO8601|none|null\",\n"
@@ -194,7 +197,8 @@ static const char *PROMPT_B2_SEARCH =
     "Intent: SEARCH_SEMANTIC\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|null\"}\n"
+    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|overdue|null\"}\n"
+    "Nếu user tìm task đã hoàn thành, status_filter=\"done\" (KHÔNG DÙNG complete).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =
@@ -263,6 +267,14 @@ static void build_time_context(char *buf, size_t buf_size)
     time_utils_format_iso8601(week.end, iso_sun, sizeof(iso_sun));
     iso_sun[10] = '\0';
 
+    /* Next week */
+    time_range_t next_week = time_utils_get_next_week_range();
+    char iso_nxt_mon[32], iso_nxt_sun[32];
+    time_utils_format_iso8601(next_week.start, iso_nxt_mon, sizeof(iso_nxt_mon));
+    iso_nxt_mon[10] = '\0';
+    time_utils_format_iso8601(next_week.end, iso_nxt_sun, sizeof(iso_nxt_sun));
+    iso_nxt_sun[10] = '\0';
+
     /* This month */
     time_range_t month = time_utils_get_this_month_range();
     char iso_month_start[32], iso_month_end[32];
@@ -277,15 +289,24 @@ static void build_time_context(char *buf, size_t buf_size)
     time_utils_format_iso8601(today.start, iso_today, sizeof(iso_today));
     iso_today[10] = '\0';
 
+    /* Current Quarter */
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+    int current_q = (tm_now.tm_mon / 3) + 1;
+
     snprintf(buf, buf_size,
         "Bây giờ: %s (%s, %s)\n"
         "Hôm nay: %s | Ngày mai: %s (%s)\n"
         "Tuần này: T2=%s → CN=%s\n"
-        "Tháng này: %s → %s",
+        "Tuần sau: T2=%s → CN=%s\n"
+        "Tháng này: %s → %s\n"
+        "Quý hiện tại: Q%d (Các tháng cuối quý: 3, 6, 9, 12)",
         iso_now, weekday_now, date_now,
         iso_today, iso_tomorrow, weekday_tomorrow,
         iso_mon, iso_sun,
-        iso_month_start, iso_month_end);
+        iso_nxt_mon, iso_nxt_sun,
+        iso_month_start, iso_month_end,
+        current_q);
 }
 
 /** Parse intent string → enum */

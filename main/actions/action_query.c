@@ -269,15 +269,15 @@ esp_err_t action_query_tasks(const char *data_json, char *response, size_t respo
     const char *sort_str = json_get_string(data, "sort", NULL);
     int limit = (int)json_get_double(data, "limit", 0);
 
-    char label_buf[64];
+    char label_buf[256];
     strncpy(label_buf, label, sizeof(label_buf) - 1);
     label_buf[sizeof(label_buf) - 1] = '\0';
 
-    char resp_type_buf[8];
+    char resp_type_buf[16];
     strncpy(resp_type_buf, response_type, sizeof(resp_type_buf) - 1);
     resp_type_buf[sizeof(resp_type_buf) - 1] = '\0';
 
-    char sort_buf[20] = {0};
+    char sort_buf[32] = {0};
     if (sort_str) {
         strncpy(sort_buf, sort_str, sizeof(sort_buf) - 1);
     }

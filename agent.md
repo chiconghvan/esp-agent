@@ -160,7 +160,7 @@ telegram_polling_loop() [main.c]
 |------------------|-----------|-----------------------------------------------------|
 | `id`             | uint32_t  | Auto-increment ID                                   |
 | `title`          | char[128] | Tiêu đề task (UTF-8)                                |
-| `type`           | char[16]  | meeting / report / reminder / deadline / event / anniversary / other |
+| `type`           | char[16]  | meeting / report / reminder / event / anniversary / other |
 | `status`         | char[16]  | pending / done / cancelled / overdue                |
 | `created_at`     | time_t    | Thời điểm tạo                                      |
 | `start_time`     | time_t    | Bắt đầu (0 = không có)                             |

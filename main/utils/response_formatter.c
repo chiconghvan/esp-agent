@@ -29,7 +29,6 @@ static const char *get_type_icon(const char *type)
     if (strcmp(type, "meeting") == 0)   return "🤝";
     if (strcmp(type, "report") == 0)    return "📄";
     if (strcmp(type, "reminder") == 0)  return "⏰";
-    if (strcmp(type, "deadline") == 0)  return "🔴";
     if (strcmp(type, "event") == 0)     return "🎯";
     if (strcmp(type, "anniversary") == 0) return "🎂";
     return "📋";

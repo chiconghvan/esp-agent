@@ -60,12 +60,8 @@ static esp_err_t openai_http_post(const char *endpoint, const char *body_str,
     char url[128];
     snprintf(url, sizeof(url), "%s%s", OPENAI_API_URL, endpoint);
 
-    /* Cấp phát buffer động cho response */
-    http_response_buf = (char *)malloc(output_size);
-    if (http_response_buf == NULL) {
-        ESP_LOGE(TAG, "Không đủ RAM cho HTTP response buffer (%zu bytes)", output_size);
-        return ESP_ERR_NO_MEM;
-    }
+    /* Tái sử dụng buffer đã được truyền vào, KHÔNG cấp phát (malloc) nhân đôi */
+    http_response_buf = output_buffer;
     http_response_len = 0;
     http_response_max = (int)output_size;
     memset(http_response_buf, 0, output_size);
@@ -83,7 +79,6 @@ static esp_err_t openai_http_post(const char *endpoint, const char *body_str,
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == NULL) {
         ESP_LOGE(TAG, "Không thể tạo HTTP client");
-        free(http_response_buf);
         http_response_buf = NULL;
         return ESP_FAIL;
     }
@@ -105,28 +100,17 @@ static esp_err_t openai_http_post(const char *endpoint, const char *body_str,
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP POST thất bại: %s", esp_err_to_name(err));
-        free(http_response_buf);
         http_response_buf = NULL;
         return err;
     }
 
     if (status_code != 200) {
-        ESP_LOGE(TAG, "OpenAI API trả về status %d: %.200s",
-                 status_code, http_response_buf);
-        free(http_response_buf);
+        ESP_LOGE(TAG, "OpenAI API trả về status %d", status_code);
         http_response_buf = NULL;
         return ESP_FAIL;
     }
 
-    /* Copy response vào output buffer */
-    size_t copy_len = (http_response_len < (int)output_size - 1) ?
-                       (size_t)http_response_len : output_size - 1;
-    memcpy(output_buffer, http_response_buf, copy_len);
-    output_buffer[copy_len] = '\0';
-
-    free(http_response_buf);
     http_response_buf = NULL;
-
     return ESP_OK;
 }
 

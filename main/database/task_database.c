@@ -216,12 +216,20 @@ static esp_err_t load_index(void)
         return ESP_OK;
     }
 
-    char buffer[JSON_BUFFER_SIZE];
-    size_t read_len = fread(buffer, 1, sizeof(buffer) - 1, file);
+    char *buffer = (char *)malloc(JSON_BUFFER_SIZE);
+    if (buffer == NULL) {
+        ESP_LOGE(TAG, "Không đủ bộ nhớ cho index buffer");
+        fclose(file);
+        return ESP_ERR_NO_MEM;
+    }
+
+    size_t read_len = fread(buffer, 1, JSON_BUFFER_SIZE - 1, file);
     fclose(file);
     buffer[read_len] = '\0';
 
     cJSON *root = json_parse_string(buffer);
+    free(buffer);
+
     if (root == NULL) {
         ESP_LOGW(TAG, "Index file hỏng, tạo mới");
         task_index.next_id = 1;
