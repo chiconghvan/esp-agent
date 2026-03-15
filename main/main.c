@@ -39,6 +39,7 @@
 #include "response_formatter.h"
 #include "esp_ota_ops.h"
 #include "driver/gpio.h"
+#include "vector_search.h"
 #include <stdlib.h>
 
 static const char *TAG = "esp_agent";
@@ -270,33 +271,42 @@ void app_main(void)
     print_banner();
 
     /* Khởi tạo màn hình OLED (sớm nhất để show boot progress) */
-    if (display_init(6, 7) != ESP_OK) {
+    if (display_init(DISPLAY_SDA_GPIO, DISPLAY_SCL_GPIO) != ESP_OK) {
         ESP_LOGW(TAG, "OLED init thất bại, tiếp tục không màn hình");
     }
-    display_boot_progress(10, "He thong dang khoi dong...");
+    display_boot_progress(10, "Starting...");
 
     /* Bước 1: Khởi tạo NVS */
     ESP_ERROR_CHECK(init_nvs());
 
-    /* Bước 2: Kết nối WiFi + SNTP */
+    /* Bước 2: Kết nối WiFi */
+    display_boot_progress(30, "Ket noi Wifi");
     ESP_LOGD(TAG, "Kết nối WiFi...");
     esp_err_t err = wifi_manager_init();
     if (err != ESP_OK) {
+        display_boot_progress(30, "WiFi Error!");
         ESP_LOGE(TAG, "WiFi thất bại! Khởi động lại sau 10 giây...");
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
     }
 
+    /* Đồng bộ thời gian SNTP ngay sau khi có mạng (Hàm này tự cập nhật % nội bộ) */
+    wifi_manager_start_sntp();
+
     /* Bước 3: Khởi tạo Database (SPIFFS) */
+    display_boot_progress(65, "Khoi tao SPIFFS");
     ESP_LOGD(TAG, "Khởi tạo database...");
     err = task_database_init();
     if (err != ESP_OK) {
+        display_boot_progress(65, "DB Error!");
         ESP_LOGE(TAG, "Database thất bại! Khởi động lại...");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
     }
 
+#if ENABLE_FIREBASE_SYNC
     /* Khởi tạo Firebase Sync Background Queue */
+    display_boot_progress(75, "Dong bo du lieu");
     firebase_sync_init();
 
     /* PULL ON BOOT: Nạp lại CSDL từ Cloud nếu ổ chứa nội gián SPIFFS đang trống */
@@ -307,21 +317,28 @@ void app_main(void)
         /* PUSH ON BOOT */
         firebase_sync_upload_all();
     }
+    display_boot_progress(80, "Done Sync.");
+#endif
+
+#if ENABLE_OPENAI_CLIENT
+    /* Kiểm tra và khôi phục Vector Embedding bị thiếu (Hàm này tự cập nhật % nội bộ) */
+    vector_search_audit_and_rebuild();
+#endif
 
     /* Khởi tạo Token Tracker */
     token_tracker_init();
 
-    /* Đồng bộ thời gian */
-    wifi_manager_start_sntp();
-
     /* Khởi động Log Web Server (sau khi WiFi + IP ổn định) */
     log_server_start();
 
+#if ENABLE_TELEGRAM_BOT
     /* Bước 4: Khởi tạo Telegram Bot */
+    display_boot_progress(95, "Ket noi Telegram");
     err = telegram_bot_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Telegram Bot thất bại!");
     }
+#endif
 
     /* Bước 5: Bắt đầu Reminder Scheduler */
     err = reminder_scheduler_start();
@@ -330,6 +347,7 @@ void app_main(void)
     }
 
     /* Chuyển sang màn hình Idle + start display task */
+    display_boot_progress(100, "SAN SANG");
     vTaskDelay(pdMS_TO_TICKS(500));
     display_show_idle();
     display_start_task();

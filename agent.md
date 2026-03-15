@@ -1,7 +1,7 @@
 # 🤖 ESP-Agent — AI Agent Context Guide
 
 > **Mục đích:** File này cung cấp toàn bộ kiến thức cần thiết cho AI agent hiểu codebase ngay lập tức.  
-> **Phiên bản:** v2.3.1 — Cập nhật: 2026-03-11  
+> **Phiên bản:** v4.0.0 — Cập nhật: 2026-03-15  
 > **Platform:** ESP-IDF v5.3 • ESP32-C3 Super Mini • 4MB Flash • ~320KB RAM  
 
 ---

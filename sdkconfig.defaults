@@ -6,7 +6,7 @@
 # --- Target ---
 CONFIG_IDF_TARGET="esp32c3"
 
-# --- Flash Size (ESP32-C3 Super Mini = 4MB) ---
+# --- Flash Size ---
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # --- Partition Table ---
@@ -29,6 +29,21 @@ CONFIG_ESP_TLS_USING_MBEDTLS=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 
+# --- MbedTLS Memory Optimization ---
+CONFIG_MBEDTLS_DYNAMIC_BUFFER_MGMT=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+# Giảm buffer SSL từ 16KB xuống 8KB để tiết kiệm RAM. (Google/OpenAI thường < 8KB cho headers)
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
+
+# --- Hardware Fixes (Bug C3 v0.4) ---
+# Tắt Hardware RSA/MPI/SHA vì bug phần cứng và tiết kiệm memory/handshake stability
+CONFIG_MBEDTLS_HARDWARE_RSA=n
+CONFIG_MBEDTLS_HARDWARE_MPI=n
+CONFIG_MBEDTLS_HARDWARE_SHA=n
+CONFIG_MBEDTLS_HARDWARE_ECC=y
+
 # --- cJSON ---
 CONFIG_CJSON_NESTING_LIMIT=20
 
@@ -39,10 +54,11 @@ CONFIG_FREERTOS_HZ=1000
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_DEFAULT_LEVEL=3
 
-# --- Stack Size (cần lớn vì các buffers JSON/HTTP) ---
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+# --- Stack Size ---
+# Giảm stack main task từ 16KB xuống 10KB để dành heap cho SSL
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 
-# --- Watchdog (phải > Telegram polling timeout + buffer) ---
+# --- Watchdog ---
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
 CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 

@@ -169,13 +169,14 @@ static const char *PROMPT_B2_MUTATE =
     "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
     "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
     "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\".\n"
-    "3. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
-    "4. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
+    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
+    "4. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
+    "5. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
     "CẬP NHẬT & THỜI GIAN:\n"
-    "5. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
-    "6. DELETE: hủy/bỏ=soft, xóa hẳn=hard.\n"
-    "7. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
-    "8. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
+    "6. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
+    "7. DELETE: hủy/bỏ=soft, xóa hẳn=hard.\n"
+    "8. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
+    "9. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
@@ -188,8 +189,9 @@ static const char *PROMPT_B2_DETAIL =
     "{\"task_ids\": [number], \"search_query\": \"string nếu mô tả tên task\"}\n\n"
     "QUY TẮC (TUÂN THỦ TUYỆT ĐỐI):\n"
     "1. User NÓI SỐ ID (\"task 3\", \"#5\") → task_ids:[số đó], search_query:null.\n"
-    "2. User NÓI TÊN (\"sinh nhật Linh\", \"báo cáo X\") → task_ids:[], search_query:\"tên\". KHÔNG dùng Context IDs.\n"
-    "3. User dùng đại từ (nó/đó/này) hoặc KHÔNG nêu tên/số → chép Context IDs vào task_ids.\n"
+    "2. User NÓI TÊN (\"sinh nhật Linh\", \"báo cáo X\") → task_ids:[], search_query:\"tên cụ thể\".\n"
+    "3. LOẠI BỎ các từ hỏi/hành động khỏi search_query (VD: \"cho xem\", \"chi tiết\", \"thông tin\", \"về\").\n"
+    "4. User dùng đại từ (nó/đó/này) hoặc KHÔNG nêu tên/số → chép Context IDs vào task_ids.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SEARCH =
@@ -198,7 +200,9 @@ static const char *PROMPT_B2_SEARCH =
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
     "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|overdue|null\"}\n"
-    "Nếu user tìm task đã hoàn thành, status_filter=\"done\" (KHÔNG DÙNG complete).\n"
+    "QUY TẮC:\n"
+    "1. search_query CHỈ chứa nội dung tìm kiếm cốt lõi, LOẠI BỎ từ \"tìm\", \"search\", \"kiếm\".\n"
+    "2. Nếu user tìm task đã hoàn thành, status_filter=\"done\" (KHÔNG DÙNG complete).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =

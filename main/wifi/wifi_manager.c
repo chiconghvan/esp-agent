@@ -499,20 +499,20 @@ esp_err_t wifi_manager_start_sntp(void)
     sntp_set_time_sync_notification_cb(sntp_sync_notification);
     esp_sntp_init();
 
-    /* Đợi tối đa 5 giây cho SNTP Google phản hồi */
+    /* Đợi tối đa 10 giây cho SNTP phản hồi */
     int retry = 0;
     char oled_msg[32];
     while (time(NULL) < 1704067200 && retry < 10) {
         retry++;
         ESP_LOGI(TAG, "Đang chờ SNTP... %d/10", retry);
-        snprintf(oled_msg, sizeof(oled_msg), "Đồng bộ SNTP... %d/10", retry);
-        display_boot_progress(75, oled_msg);
+        snprintf(oled_msg, sizeof(oled_msg), "Dong bo SNTP %d/10", retry);
+        display_boot_progress(50, oled_msg);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     
     if (time(NULL) >= 1704067200) {
         ESP_LOGI(TAG, "Đồng bộ SNTP: OK");
-        display_boot_progress(75, "Đồng bộ SNTP: OK");
+        display_boot_progress(58, "Dong bo Thoi gian: OK");
         return ESP_OK;
     }
     

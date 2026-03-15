@@ -18,6 +18,10 @@
 #include <strings.h>
 #include <math.h>
 #include <dirent.h>
+#include "display_manager.h"
+#include <sys/stat.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 
 static const char *TAG = "vector_search";
@@ -271,5 +275,71 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
         ESP_LOGI(TAG, "  [%d] task_id=%lu, sim=%.4f, title=[%s]",
                  i + 1, (unsigned long)results[i].task_id, results[i].similarity, title_buf);
     }
+    return ESP_OK;
+}
+
+#include "openai_client.h"
+
+/* --------------------------------------------------------------------------
+ * Audit và Rebuild: Tự động tạo lại các embedding bị thiếu
+ * -------------------------------------------------------------------------- */
+esp_err_t vector_search_audit_and_rebuild(void)
+{
+    const task_index_t *index = task_database_get_index();
+    if (index->count == 0) return ESP_OK;
+
+    /* Đếm tổng số task thiếu để làm mẫu số cho progress bar */
+    int total_missing = 0;
+    for (int i = 0; i < index->count; i++) {
+        char filepath[64];
+        get_embedding_filepath(index->entries[i].id, filepath, sizeof(filepath));
+        struct stat st;
+        if (stat(filepath, &st) != 0) total_missing++;
+    }
+
+    if (total_missing == 0) {
+        display_boot_progress(90, "AI Embeddings: OK");
+        ESP_LOGI(TAG, "Audit xong: Tất cả embeddings đã đầy đủ.");
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "Bắt đầu audit embedding cho %d tasks (thiếu %d)...", index->count, total_missing);
+    int rebuilt_count = 0;
+    char oled_msg[32];
+
+    for (int i = 0; i < index->count; i++) {
+        uint32_t task_id = index->entries[i].id;
+        char filepath[64];
+        get_embedding_filepath(task_id, filepath, sizeof(filepath));
+
+        struct stat st;
+        if (stat(filepath, &st) != 0) {
+            /* Đọc dữ liệu task để lấy title */
+            task_record_t task;
+            if (task_database_read(task_id, &task) == ESP_OK) {
+                snprintf(oled_msg, sizeof(oled_msg), "Rebuilt Embeding %d/%d", rebuilt_count + 1, total_missing);
+                display_boot_progress(85, oled_msg);
+                
+                ESP_LOGI(TAG, "Đang tạo lại embedding cho task #%" PRIu32 ": %s", task_id, task.title);
+                
+                float embedding[EMBEDDING_DIM];
+                esp_err_t err = openai_create_embedding(task.title, embedding, EMBEDDING_DIM);
+                
+                if (err == ESP_OK) {
+                    if (vector_search_save(task_id, embedding) == ESP_OK) {
+                        rebuilt_count++;
+                    }
+                } else {
+                    ESP_LOGE(TAG, "Không thể tạo embedding cho task #%" PRIu32 " (Error: %s)", 
+                             task_id, esp_err_to_name(err));
+                    if (err != ESP_ERR_TIMEOUT) break; 
+                }
+                vTaskDelay(pdMS_TO_TICKS(500));
+            }
+        }
+    }
+
+    display_boot_progress(90, "AI Rebuilt Done.");
+    ESP_LOGI(TAG, "Audit xong: Đã tạo lại %d/%d embedding.", rebuilt_count, total_missing);
     return ESP_OK;
 }

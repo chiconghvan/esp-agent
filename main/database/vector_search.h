@@ -76,4 +76,14 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
  */
 float vector_search_cosine_similarity(const float *vec_a, const float *vec_b, int dim);
 
+/**
+ * @brief Kiểm tra và tạo lại các embedding bị thiếu
+ *
+ * Duyệt qua toàn bộ task trong database, nếu thiếu file embedding
+ * sẽ gọi OpenAI API để tạo lại.
+ *
+ * @return esp_err_t ESP_OK nếu thành công hoặc không có gì để làm
+ */
+esp_err_t vector_search_audit_and_rebuild(void);
+
 #endif /* VECTOR_SEARCH_H */
