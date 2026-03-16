@@ -1,38 +1,41 @@
 /**
  * ===========================================================================
  * @file display_config.h
- * @brief Cấu hình giao diện người dùng cho màn hình OLED
+ * @brief User Interface Configuration for OLED
  * ===========================================================================
  */
 
 #ifndef DISPLAY_CONFIG_H
 #define DISPLAY_CONFIG_H
 
-/* ──── Cấu hình Font (Granular) ──── */
+/* ---- Extern Custom Fonts ---- */
+extern const uint8_t u8g2_font_iosevkacharonmono_light_13[];
+
+/* ---- Font Configuration (Granular) ---- */
 // Danh sách font: https://github.com/olikraus/u8g2/wiki/fntlistall
-#define DISP_FONT_HEADER_LABEL  u8g2_font_t0_11_mr  // Cho chữ "Deadline"/"Today"
-#define DISP_FONT_HEADER_TIME   u8g2_font_lucasfont_alternate_tf  // Cho đồng hồ
-#define DISP_FONT_TASK_ID       u8g2_font_6x13B_mr  // Cho ký hiệu #ID
-#define DISP_FONT_TASK_TITLE    u8g2_font_7x14_mr  // Cho nội dung tiêu đề
-#define DISP_FONT_TASK_DUE      u8g2_font_7x14_mr  // Cho thời hạn (Due time)
+#define DISP_FONT_HEADER_LABEL  u8g2_font_t0_11_mr  // For "Deadline"/"Today"
+#define DISP_FONT_HEADER_TIME   u8g2_font_lucasfont_alternate_tn  // For clock
+#define DISP_FONT_TASK_ID       u8g2_font_6x13B_mr  // For #ID
+#define DISP_FONT_TASK_TITLE    u8g2_font_iosevkacharonmono_light_13     // Auto-switched
+#define DISP_FONT_TASK_DUE      u8g2_font_iosevkacharonmono_light_13     // Auto-switched
 
-/* ──── Cấu hình Chiều rộng Ký tự Tùy chỉnh (Force Width) ──── */
-#define DISP_WIDTH_SPACE        3                   // Khoảng cách phím cách (px)
-#define DISP_WIDTH_PUNCTUATION  6                   // Khoảng cách cho các dấu : , . ' (px)
+/* ---- Custom Char Widths ---- */
+#define DISP_WIDTH_SPACE        3                   // Space width (px)
+#define DISP_WIDTH_PUNCTUATION  6                   // Punctuation width : , . ' (px)
 
-/* ──── Kích thước Bar & Vị trí ──── */
-#define DISP_HEADER_HEIGHT      11                  // Độ cao thanh trạng thái (pixel)
-#define DISP_HEADER_Y_OFFSET    10                   // Baseline cho text trong thanh trạng thái
+/* ---- Bar Size & Position ---- */
+#define DISP_HEADER_HEIGHT      11                  // Status bar height
+#define DISP_HEADER_Y_OFFSET    10                   // Baseline for text in bar
 
-/* ──── Cấu hình Khoảng cách (Spacings) ──── */
-#define DISP_MARGIN_TOP         4                   // Từ Bar xuống dòng 1
-#define DISP_LINE_SPACING       15                  // Dãn dòng giữa 2 dòng Title
-#define DISP_MARGIN_DUE         6                   // Từ Title xuống Due Time
-#define DISP_MARGIN_BOTTOM      3                   // Từ Due Time xuống Page Indicator (chấm tròn)
+/* ---- Spacings ---- */
+#define DISP_MARGIN_TOP         5                   // From Bar to Line 1 (Reduced for 14pt)
+#define DISP_LINE_SPACING       15                  // Between Title lines (Increased for 14pt)
+#define DISP_MARGIN_DUE         7                   // From Title to Due Time
+#define DISP_MARGIN_BOTTOM      1                   // From Due Time to Page Indicator
 
-#define DISP_X_PADDING          2                   // Lề trái màn hình (pixel)
+#define DISP_X_PADDING          0                   // Left margin (pixel)
 
-/* ──── Hiệu ứng ──── */
-#define DISP_ENABLE_ANIMATION   0                   // 1: Bật hiệu ứng trượt, 0: Chuyển trang trực tiếp
+/* ---- Effects ---- */
+#define DISP_ENABLE_ANIMATION   1                   // 1: Enable sliding, 0: Direct
 
 #endif /* DISPLAY_CONFIG_H */

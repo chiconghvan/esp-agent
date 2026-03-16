@@ -29,6 +29,7 @@ set(COMPONENT_SRCS
     "utils/log_server.c"
     "display/vn_utils.c"
     "display/display_manager.c"
+    "display/u8g2_font_iosevkacharonmono_light_13.c"
 )
 
 set(COMPONENT_INCLUDE_DIRS

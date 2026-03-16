@@ -1,10 +1,10 @@
 /**
  * ===========================================================================
  * @file display_manager.c
- * @brief Quản lý màn hình OLED bằng thư viện U8g2
+ * @brief OLED Display Management using U8g2
  *
- * BOOT → IDLE (carousel) ↔ RESULT / ALERT
- * Sử dụng Font X11 7x13 đồng bộ cho toàn bộ hệ thống.
+ * BOOT -> IDLE (carousel) <-> RESULT / ALERT
+ * Using synchronous font for the entire system.
  * ===========================================================================
  */
 
@@ -28,6 +28,7 @@
 
 // static const char *TAG = "display"; // Unused
 static u8g2_t u8g2;
+static SemaphoreHandle_t s_display_mutex = NULL;
 
 /* ──── Screen states ──── */
 typedef enum {
@@ -86,6 +87,12 @@ static void button_init(void)
 
 esp_err_t display_init(int sda_gpio, int scl_gpio)
 {
+    // Khởi tạo Mutex trước khi dùng
+    if (s_display_mutex == NULL) {
+        s_display_mutex = xSemaphoreCreateMutex();
+    }
+    
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
     u8g2_esp32_hal_t hal = U8G2_ESP32_HAL_DEFAULT;
     hal.bus.i2c.sda = sda_gpio;
     hal.bus.i2c.scl = scl_gpio;
@@ -100,6 +107,7 @@ esp_err_t display_init(int sda_gpio, int scl_gpio)
     u8g2_InitDisplay(&u8g2);
     u8g2_SetPowerSave(&u8g2, 0);
     u8g2_ClearBuffer(&u8g2);
+    xSemaphoreGive(s_display_mutex);
     
     button_init();
     s_state = SCREEN_BOOT;
@@ -124,8 +132,7 @@ static int get_str_width_custom(const char *s)
     int total_w = 0;
     u8x8_utf8_init(u8g2_GetU8x8(&u8g2));
     while (*s) {
-        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*s);
-        s++;
+        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*s++);
         if (c == 0xFFFF) break;
         if (c == 0xFFFE) continue;
         total_w += get_char_width_custom(c);
@@ -138,17 +145,11 @@ static void draw_utf8_custom(int x, int y, const char *s)
     int cur_x = x;
     u8x8_utf8_init(u8g2_GetU8x8(&u8g2));
     while (*s) {
-        const char *prev_s = s;
-        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*s);
-        s++;
+        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*s++);
         if (c == 0xFFFF) break;
         if (c == 0xFFFE) continue;
 
-        int len = s - prev_s;
-        char buf[8] = {0};
-        memcpy(buf, prev_s, len);
-
-        u8g2_DrawUTF8(&u8g2, cur_x, y, buf);
+        u8g2_DrawGlyph(&u8g2, cur_x, y, c);
         cur_x += get_char_width_custom(c);
     }
 }
@@ -166,6 +167,9 @@ static void draw_utf8_custom_centered(int y, const char *s)
  * ========================================================================== */
 void display_boot_progress(int percent, const char *label)
 {
+    if (s_display_mutex == NULL) return;
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+    
     u8g2_ClearBuffer(&u8g2);
     
     // 1. Vẽ tiêu đề Firmware (Centered)
@@ -185,11 +189,10 @@ void display_boot_progress(int percent, const char *label)
     // 3. Vẽ nhãn trạng thái (Centered)
     u8g2_SetFont(&u8g2, DISP_FONT_TASK_TITLE);
     int asc_b = u8g2_GetAscent(&u8g2);
-    char ascii[48];
-    vn_strip_diacritics(ascii, label, sizeof(ascii));
-    draw_utf8_custom_centered(50 + asc_b, ascii);
+    draw_utf8_custom_centered(50 + asc_b, label);
     
     u8g2_SendBuffer(&u8g2);
+    xSemaphoreGive(s_display_mutex);
 }
 
 /* ==========================================================================
@@ -203,17 +206,16 @@ static int find_split_point_custom(const char *title, int max_w, bool hard_cut)
     int last_break_idx = -1;
     u8x8_utf8_init(u8g2_GetU8x8(&u8g2));
     const char *p = title;
+    const char *char_start = title;
     
     while (*p) {
-        const char *prev_p = p;
-        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*p);
-        p++;
+        uint16_t c = u8x8_utf8_next(u8g2_GetU8x8(&u8g2), (uint8_t)*p++);
         if (c == 0xFFFF) break;
         if (c == 0xFFFE) continue;
         
         int char_w = get_char_width_custom(c);
         if (cur_w + char_w > max_w) {
-            if (hard_cut || last_break_idx == -1) return (prev_p - title);
+            if (hard_cut || last_break_idx == -1) return (char_start - title);
             return last_break_idx;
         }
         
@@ -222,6 +224,7 @@ static int find_split_point_custom(const char *title, int max_w, bool hard_cut)
         if (c == ' ' || c == ':' || c == ',' || c == '.' || c == '-' || c == ';' || c == '!') {
             last_break_idx = p - title;
         }
+        char_start = p;
     }
     return p - title;
 }
@@ -256,7 +259,7 @@ static void split_title(const char *title, const char *id_str, char lines[2][48]
 
 static void format_due(time_t due, char *buf, size_t sz)
 {
-    if (due <= 0) { snprintf(buf, sz, "Han: --"); return; }
+    if (due <= 0) { snprintf(buf, sz, "Hạn: --"); return; }
     struct tm ti; localtime_r(&due, &ti);
     time_t now = time_utils_get_now();
     struct tm nt; localtime_r(&now, &nt);
@@ -264,11 +267,11 @@ static void format_due(time_t due, char *buf, size_t sz)
     time_t t0 = mktime(&nt);
 
     if (due < t0 + 86400)
-        snprintf(buf, sz, "Hom nay %02d:%02d", ti.tm_hour, ti.tm_min);
+        snprintf(buf, sz, "Hôm nay, %02d:%02d", ti.tm_hour, ti.tm_min);
     else if (due < t0 + 2*86400)
-        snprintf(buf, sz, "Ngay mai %02d:%02d", ti.tm_hour, ti.tm_min);
+        snprintf(buf, sz, "Ngày mai, %02d:%02d", ti.tm_hour, ti.tm_min);
     else
-        snprintf(buf, sz, "%02d/%02d %02d:%02d", ti.tm_mday, ti.tm_mon + 1, ti.tm_hour, ti.tm_min);
+        snprintf(buf, sz, "%02d/%02d, %02d:%02d", ti.tm_mday, ti.tm_mon + 1, ti.tm_hour, ti.tm_min);
 }
 
 /* ==========================================================================
@@ -391,8 +394,7 @@ static void refresh_idle_data(void)
         s_dl_count = count;
         for (int i = 0; i < count; i++) {
             snprintf(s_items[i].id_str, sizeof(s_items[i].id_str), "#%lu", (unsigned long)tasks[i].id);
-            char ascii[64]; vn_strip_diacritics(ascii, tasks[i].title, sizeof(ascii));
-            split_title(ascii, s_items[i].id_str, s_items[i].title_lines, &s_items[i].truncated);
+            split_title(tasks[i].title, s_items[i].id_str, s_items[i].title_lines, &s_items[i].truncated);
             format_due(tasks[i].due_time, s_items[i].due_str, sizeof(s_items[i].due_str));
         }
         if (s_cur_idx >= count) s_cur_idx = 0;
@@ -403,15 +405,20 @@ static void refresh_idle_data(void)
 
 static void render_idle(void)
 {
+    if (s_display_mutex == NULL) return;
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+
     u8g2_ClearBuffer(&u8g2);
     draw_header();
     if (s_dl_count > 0) {
         draw_task_content(s_cur_idx, DISP_X_PADDING);
         draw_dots(s_cur_idx, s_dl_count);
     } else {
-        u8g2_DrawStr(&u8g2, 10, 40, "Khong co task");
+        u8g2_SetFont(&u8g2, DISP_FONT_TASK_TITLE);
+        draw_utf8_custom_centered(35, "KH\xC3\x94NG C\xC3\x93 C\xC3\x94NG VI\xE1\xBB\x86" "C");
     }
     u8g2_SendBuffer(&u8g2);
+    xSemaphoreGive(s_display_mutex);
 }
 
 static void slide_to_next(void)
@@ -421,14 +428,19 @@ static void slide_to_next(void)
 
 #if DISP_ENABLE_ANIMATION
     int old_idx = s_cur_idx;
-    for (int step = 1; step <= 8; step++) {
-        int shift = (step * 128) / 8;
+    // Animation 12 bước, mỗi bước trượt nhanh hơn (~9ms delay + I2C time)
+    for (int step = 1; step <= 6; step++) {
+        int shift = (step * 128) / 6;
+        if (s_display_mutex == NULL) return;
+        xSemaphoreTake(s_display_mutex, portMAX_DELAY);
         u8g2_ClearBuffer(&u8g2);
         draw_header();
         draw_task_content(old_idx, DISP_X_PADDING - shift);
-        draw_task_content(new_idx, 130 - shift);
+        draw_task_content(new_idx, 128 + DISP_X_PADDING - shift);
         draw_dots(new_idx, s_dl_count);
         u8g2_SendBuffer(&u8g2);
+        xSemaphoreGive(s_display_mutex);
+        vTaskDelay(pdMS_TO_TICKS(2)); 
     }
 #endif
 
@@ -441,14 +453,17 @@ static void slide_to_next(void)
  * ========================================================================== */
 void display_show_result(const char *action, uint32_t task_id, const char *title)
 {
+    if (s_display_mutex == NULL) return;
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+
     u8g2_ClearBuffer(&u8g2);
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_DrawBox(&u8g2, 0, 0, 128, DISP_HEADER_HEIGHT);
     u8g2_SetDrawColor(&u8g2, 0);
     u8g2_SetFont(&u8g2, DISP_FONT_HEADER_LABEL);
     
-    char aa[22]; vn_strip_diacritics(aa, action ? action : "Hoan thanh", sizeof(aa));
-    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, aa);
+    const char *action_str = action ? action : "Ho\xC3\xA0n th\xC3\xA0nh";
+    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, action_str);
 
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_SetFont(&u8g2, DISP_FONT_TASK_TITLE);
@@ -463,22 +478,25 @@ void display_show_result(const char *action, uint32_t task_id, const char *title
         draw_utf8_custom(2, y0, d);
     }
     if (title) {
-        char at[64]; vn_strip_diacritics(at, title, sizeof(at));
-        draw_utf8_custom(2, y1, at);
+        draw_utf8_custom(2, y1, title);
     }
     u8g2_SendBuffer(&u8g2);
+    xSemaphoreGive(s_display_mutex);
     s_state = SCREEN_RESULT;
     s_state_start = xTaskGetTickCount();
 }
 
 void display_show_alert(uint32_t task_id, const char *title, const char *due_str, int32_t seconds_left)
 {
+    if (s_display_mutex == NULL) return;
+    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+
     u8g2_ClearBuffer(&u8g2);
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_DrawBox(&u8g2, 0, 0, 128, DISP_HEADER_HEIGHT);
     u8g2_SetDrawColor(&u8g2, 0);
     u8g2_SetFont(&u8g2, DISP_FONT_HEADER_LABEL);
-    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, "SAP DEN HAN!");
+    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, "S\xE1\xBA\xAEP \xC4\x90\xE1\xBA\xBEN H\xE1\xBA\xA0N!");
 
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_SetFont(&u8g2, DISP_FONT_TASK_TITLE);
@@ -492,18 +510,19 @@ void display_show_alert(uint32_t task_id, const char *title, const char *due_str
     char id_str[16]; snprintf(id_str, sizeof(id_str), "#%lu", (unsigned long)task_id);
     draw_utf8_custom(2, y0, id_str);
     
-    char at[32]; vn_strip_diacritics(at, title, sizeof(at));
-    draw_utf8_custom(35, y0, at);
+    draw_utf8_custom(35, y0, title);
 
-    char due[32]; snprintf(due, sizeof(due), "Luc: %s", due_str);
+    char due[32]; snprintf(due, sizeof(due), "L\xC3\xBA" "c: %s", due_str);
     draw_utf8_custom(2, y1, due);
 
-    char status[32];
-    if (seconds_left < 0) strcpy(status, "DA QUA HAN!");
-    else snprintf(status, sizeof(status), "Con %ld phut", (long)(seconds_left/60));
+    char status[64];
+    if (seconds_left < 0) strcpy(status, "\xC4\x90\xC3\x83 QU\xC3\x81 H\xE1\xBA\xA0N!");
+    else snprintf(status, sizeof(status), "C\xC3\xB2n %ld ph\xC3\xBAt", (long)(seconds_left/60));
     draw_utf8_custom(2, y2, status);
 
     u8g2_SendBuffer(&u8g2);
+    xSemaphoreGive(s_display_mutex);
+
     s_state = SCREEN_ALERT;
     s_state_start = xTaskGetTickCount();
 }

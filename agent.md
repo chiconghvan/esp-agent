@@ -2,7 +2,7 @@
 
 > **Mục đích:** File này cung cấp toàn bộ kiến thức cần thiết cho AI agent hiểu codebase ngay lập tức.  
 > **Phiên bản:** v4.0.0 — Cập nhật: 2026-03-15  
-> **Platform:** ESP-IDF v5.3 • ESP32-C3 Super Mini • 4MB Flash • ~320KB RAM  
+> **Platform:** ESP-IDF v5.5 • ESP32-C3 Super Mini • 4MB Flash • ~320KB RAM  
 
 ---
 
@@ -25,7 +25,7 @@
 ┌─────┐┌──────┐┌──────┐┌──────┐┌───────┐┌───────┐
 │WiFi ││Tele- ││OpenAI││Data- ││Display││Fire-  │
 │Mgr  ││gram  ││Client││base  ││Mgr    ││base   │
-│     ││Bot   ││      ││+ Vec ││(OLED) ││Sync   │
+│     ││Bot   ││      ││+ Vec ││(U8g2) ││Sync   │
 └─────┘└──────┘└──────┘└──────┘└───────┘└───────┘
                   │         │
            ┌──────▼─────────▼──────┐
@@ -55,6 +55,9 @@ ESP-Agent/
 ├── prompt.txt                  # Prompt gốc cho AI tham khảo thiết kế (không ảnh hưởng code)
 ├── README.md                   # Giới thiệu project
 ├── agent.md                    # File này — hướng dẫn cho AI agent
+├── components/                 # Các thư viện độc lập
+│   ├── u8g2/                   # Thư viện đồ họa U8g2
+│   └── u8g2-hal-esp-idf/       # HAL I2C driver cho U8g2 trên ESP32
 ├── spiffs_data/                # Dữ liệu mẫu SPIFFS (nếu có)
 │
 └── main/
@@ -96,11 +99,9 @@ ESP-Agent/
     │   └── action_undo.c       # Lưu/khôi phục trạng thái cũ (1 bước undo)
     │
     ├── display/
-    │   ├── display_manager.h   # API: init(), boot_progress(), show_idle/result/alert()
-    │   ├── display_manager.c   # State machine BOOT→IDLE↔RESULT/ALERT, carousel animation
-    │   ├── ssd1306.h           # Driver API cho SSD1306 OLED (I2C)
-    │   ├── ssd1306.c           # Thao tác pixel, text, invert, scroll
-    │   ├── font6x8.h           # Font bitmap 6x8 ASCII
+    │   ├── display_manager.h   # API: init, boot_progress, show_idle/result/alert
+    │   ├── display_manager.c   # State machine, U8g2 Custom Engine, Dynamic Layout
+    │   ├── display_config.h    # Các thiết lập đồ hoạ, Font, Spacing cho U8g2
     │   ├── vn_utils.h          # API: strip dấu tiếng Việt UTF-8 → ASCII
     │   └── vn_utils.c          # Bộ chuyển đổi ký tự Unicode → ASCII tương đương
     │
@@ -149,7 +150,7 @@ telegram_polling_loop() [main.c]
             │
             ├── Truy vấn CSDL local (SPIFFS) hoặc Vector Search
             ├── Format response (response_formatter)
-            ├── Cập nhật OLED display
+            ├── Cập nhật U8g2 Display (Có bảo vệ bằng Mutex)
             └── Gửi response về Telegram
 ```
 
@@ -190,6 +191,14 @@ Trong đó:
     Mặc định       →  α = 0.5  (Cân bằng 50/50)
 - Ngưỡng: SIMILARITY_THRESHOLD = 0.70f
 ```
+
+### 1.6 U8g2 Graphics Engine & Dynamic Layout
+
+Từ bản v4.0.0, màn hình dùng thư viện hiển thị động **U8g2**:
+- **Dynamic Layout**: Các toạ độ vẽ nội dung Text không cố định cứng mã (hardcode top-left) mà tự động tính toán thông qua `u8g2_GetAscent()`. Nhờ đó, nếu bạn cấu hình lại loại Font khác trong `display_config.h`, giao diện vẫn luôn giữ khoảng cách Margin và Spacing cân đối.
+- **Tuỳ biến Typography (`draw_utf8_custom`)**: Trình xử lý Custom thay vì mặc định. Tự động parse Unicode, đo chiều rộng thực `u8g2_GetGlyphWidth()` từng chữ và ép khoảng cách phím cách/dấu chấm câu theo setting `DISP_WIDTH_SPACE` để tiết kiệm diện tích bề ngang cực kỳ đáng kể.
+- **Hiệu ứng cắt dòng (Truncation Pixel Ellipsis)**: Nếu Task title quá dài bị ép ngắt. Thay vì hiển thị dấu ba chấm `...` font lớn xấu, hệ thống tự động chèn hiệu ứng bằng việc vẽ thủ công 3 ô vuông pixel (1x1px) rất mượt.
+- **Bảo Vệ Tranh Chấp Bus I2C (Display Mutex)**: Do I2C Bus là tài nguyên chung. Màn hình liên tục thay đổi giữa các vòng lặp Idle, mà song song đó Task Handler (ví dụ: tạo task xong) lại gọi `display_show_result`. Để tránh Panic/Crash (Error 263), toàn bộ thao tác từ `u8g2_ClearBuffer` đến `u8g2_SendBuffer` luôn được đặt trong Khối Khóa: `xSemaphoreTake(s_display_mutex, portMAX_DELAY) / xSemaphoreGive`.
 
 ---
 
@@ -304,6 +313,8 @@ esp_err_t module_public_function(void) { ... }
 | `vector_search.c`             | Thuật toán Hybrid Search. Thay đổi alpha/threshold ảnh hưởng chất lượng search |
 | `config.h.example`            | Template cho người dùng mới. Giữ version đồng bộ với `config.h` |
 | `wifi_manager.c`              | Có Captive Portal logic (APSTA mode). Rất phức tạp       |
+| `display_manager.c`           | Mọi thao tác I2C Bus phải được bọc trong vòng Mutex (`s_display_mutex`) để tránh Crash. |
+| `display_config.h`            | Quản lý constants Margin, Spacings và lựa chọn U8g2 Font. |
 
 ### 3.3 ✅ QUY TẮC BẮT BUỘC
 
