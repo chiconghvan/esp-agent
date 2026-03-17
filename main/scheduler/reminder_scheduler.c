@@ -43,7 +43,7 @@ static void reminder_task(void *arg)
 
         time_t now = time_utils_get_now();
 
-        /* === Phần 1: Gửi reminders thủ công === */
+        /* === Phần 1: Gửi reminders thủ công (Hẹn giờ chính xác) === */
         int due_count = 0;
         if (task_database_query_due_reminders(query_results, MAX_QUERY_RESULTS, &due_count) == ESP_OK && due_count > 0) {
             for (int i = 0; i < due_count; i++) {
@@ -53,6 +53,32 @@ static void reminder_task(void *arg)
                     display_show_alert(query_results[i].id, query_results[i].title, "Remind!", 0);
                     query_results[i].reminder = 0;
                     task_database_update(&query_results[i]);
+                }
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+
+        /* === Phần 1b: Thông báo khi đến Start Time (Dành cho task có khoảng thời gian) === */
+        const task_index_t *idx_start = task_database_get_index();
+        for (int i = 0; i < idx_start->count; i++) {
+            const task_index_entry_t *e = &idx_start->entries[i];
+            if (strcmp(e->status, "pending") != 0 || e->start_time == 0) continue;
+            
+            // Nếu đã đến start_time và chưa từng nhắc (reminder < start_time)
+            if (now >= e->start_time && e->reminder < e->start_time) {
+                task_record_t ev;
+                if (task_database_read(e->id, &ev) == ESP_OK) {
+                    char m[RESPONSE_BUFFER_SIZE];
+                    char time_buf[64];
+                    time_utils_format_vietnamese(ev.start_time, time_buf, sizeof(time_buf));
+                    snprintf(m, sizeof(m), "🎬 <b>BẮT ĐẦU: %s</b>\n📌 [#%lu] %s\n⏰ Bắt đầu lúc: %s", 
+                             ev.type, (unsigned long)ev.id, ev.title, time_buf);
+                    
+                    if (telegram_bot_send_default(m) == ESP_OK) {
+                        display_show_alert(ev.id, ev.title, "Started!", 0);
+                        ev.reminder = now; // Đánh dấu đã nhắc
+                        task_database_update(&ev);
+                    }
                 }
                 vTaskDelay(pdMS_TO_TICKS(1000));
             }
@@ -81,33 +107,8 @@ static void reminder_task(void *arg)
             }
         }
 
-        /* === Phần 3: Sự kiện hàng ngày === */
-        struct tm tm_now; localtime_r(&now, &tm_now);
-        tm_now.tm_hour = 0; tm_now.tm_min = 0; tm_now.tm_sec = 0;
-        time_t today_start = mktime(&tm_now);
-        time_t today_end = today_start + 86400 - 1;
-
-        const task_index_t *idx = task_database_get_index();
-        for (int i = 0; i < idx->count; i++) {
-            const task_index_entry_t *e = &idx->entries[i];
-            if (strcmp(e->status, "pending") != 0 || e->start_time == 0 || e->due_time == 0) continue;
-            if (today_start < e->start_time || today_start > e->due_time) continue;
-            if (e->reminder >= today_start && e->reminder <= today_end) continue;
-
-            task_record_t ev; /* Biến đơn lẻ thì không sao */
-            if (task_database_read(e->id, &ev) == ESP_OK) {
-                int d = (int)((today_start - ev.start_time) / 86400) + 1;
-                int tot = (int)((ev.due_time - ev.start_time) / 86400) + 1;
-                char m[RESPONSE_BUFFER_SIZE];
-                snprintf(m, sizeof(m), "📅 Sự kiện (ngày %d/%d):\n📌 [#%lu] %s", d, tot, (unsigned long)ev.id, ev.title);
-                if (telegram_bot_send_default(m) == ESP_OK) {
-                    display_show_alert(ev.id, ev.title, "Đang diễn ra", tot - d);
-                    ev.reminder = now;
-                    task_database_update(&ev);
-                }
-            }
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
+        /* === Phần 3: Sự kiện hàng ngày (Đã bỏ để gộp vào Daily Briefing 8:00) === */
+        // Logic cũ gửi tin nhắn riêng lẻ mỗi ngày cho event dài ngày đã được thay thế.
 
         /* === Phần 4: Nhắc nhở quá hạn lúc 16:00 === */
         static int s_last_nudge_yday = -1;
@@ -130,19 +131,57 @@ static void reminder_task(void *arg)
         static int s_last_briefing_yday = -1;
         if (tm_n.tm_hour == 8 && tm_n.tm_min <= 2 && s_last_briefing_yday != tm_n.tm_yday) {
             time_range_t today = time_utils_get_today_range();
-            int today_count = 0;
-            if (task_database_query_by_time(today.start, today.end, NULL, "pending", query_results, MAX_QUERY_RESULTS, &today_count) == ESP_OK && today_count > 0) {
-                char brief[RESPONSE_BUFFER_SIZE];
-                int w = snprintf(brief, sizeof(brief), "☀️ <b>CHÀO BUỔI SÁNG!</b>\nHôm nay bạn có %d việc cần xử lý:\n", today_count);
-                for (int j = 0; j < today_count && w < sizeof(brief) - 100; j++)
-                    w += snprintf(brief + w, sizeof(brief) - w, "\n%d. [#%lu] %s", j+1, (unsigned long)query_results[j].id, query_results[j].title);
-                
+            
+            char brief[RESPONSE_BUFFER_SIZE];
+            int w = snprintf(brief, sizeof(brief), "☀️ <b>CHÀO BUỔI SÁNG!</b>\nHôm nay bạn có các việc sau:\n");
+            int task_count = 0;
+
+            const task_index_t *idx = task_database_get_index();
+            for (int i = 0; i < idx->count && task_count < 15; i++) {
+                const task_index_entry_t *e = &idx->entries[i];
+                if (strcmp(e->status, "pending") != 0 && strcmp(e->status, "overdue") != 0) continue;
+
+                bool active_today = false;
+                // 1. Task đến hạn hôm nay
+                if (e->due_time >= today.start && e->due_time <= today.end) active_today = true;
+                // 2. Task bắt đầu hôm nay
+                else if (e->start_time >= today.start && e->start_time <= today.end) active_today = true;
+                // 3. Task đang diễn ra (bắt đầu trước, kết thúc sau)
+                else if (e->start_time > 0 && e->start_time < today.start && e->due_time > today.end) active_today = true;
+
+                if (active_today) {
+                    task_record_t t;
+                    if (task_database_read(e->id, &t) == ESP_OK) {
+                        task_count++;
+                        char time_info[64] = "";
+                        if (t.start_time > 0 && t.due_time > 0) {
+                            if (t.start_time < today.start) {
+                                int day = (int)((today.start - t.start_time) / 86400) + 1;
+                                int total = (int)((t.due_time - t.start_time) / 86400) + 1;
+                                snprintf(time_info, sizeof(time_info), " (Ngày %d/%d)", day, total);
+                            } else {
+                                struct tm tm_st; localtime_r(&t.start_time, &tm_st);
+                                snprintf(time_info, sizeof(time_info), " [Bắt đầu %02d:%02d]", tm_st.tm_hour, tm_st.tm_min);
+                            }
+                        } else if (t.due_time > 0) {
+                            struct tm tm_due; localtime_r(&t.due_time, &tm_due);
+                            snprintf(time_info, sizeof(time_info), " [Hạn %02d:%02d]", tm_due.tm_hour, tm_due.tm_min);
+                        }
+                        
+                        w += snprintf(brief + w, sizeof(brief) - w, "\n%d. [#%lu] %s%s", 
+                                     task_count, (unsigned long)t.id, t.title, time_info);
+                    }
+                }
+            }
+
+            if (task_count > 0) {
                 int64_t chat_id = strtoll(TELEGRAM_CHAT_ID, NULL, 10);
                 telegram_bot_send_inline_keyboard(chat_id, brief, "📅 Xem Deadline sắp tới", "cmd_deadline_3d");
-                s_last_briefing_yday = tm_n.tm_yday;
             } else {
-                s_last_briefing_yday = tm_n.tm_yday; // Không có việc thì vẫn đánh dấu đã kiểm tra
+                // Nếu không có việc gì cụ thể, vẫn gửi lời chào
+                telegram_bot_send_default("☀️ <b>CHÀO BUỔI SÁNG!</b>\nHôm nay bạn không có việc gì gấp. Chúc một ngày tốt lành!");
             }
+            s_last_briefing_yday = tm_n.tm_yday;
         }
     }
     free(query_results);

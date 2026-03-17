@@ -464,7 +464,7 @@ void display_show_result(const char *action, uint32_t task_id, const char *title
     u8g2_SetDrawColor(&u8g2, 0);
     u8g2_SetFont(&u8g2, DISP_FONT_HEADER_LABEL);
     
-    const char *action_str = action ? action : "Ho\xC3\xA0n th\xC3\xA0nh";
+    const char *action_str = action ? action : "HOAN THANH";
     draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, action_str);
 
     u8g2_SetDrawColor(&u8g2, 1);
@@ -498,7 +498,7 @@ void display_show_alert(uint32_t task_id, const char *title, const char *due_str
     u8g2_DrawBox(&u8g2, 0, 0, 128, DISP_HEADER_HEIGHT);
     u8g2_SetDrawColor(&u8g2, 0);
     u8g2_SetFont(&u8g2, DISP_FONT_HEADER_LABEL);
-    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, "S\xE1\xBA\xAEP \xC4\x90\xE1\xBA\xBEN H\xE1\xBA\xA0N!");
+    draw_utf8_custom(2, DISP_HEADER_Y_OFFSET, "SAP DEN HAN!");
 
     u8g2_SetDrawColor(&u8g2, 1);
     u8g2_SetFont(&u8g2, DISP_FONT_TASK_TITLE);
@@ -514,12 +514,12 @@ void display_show_alert(uint32_t task_id, const char *title, const char *due_str
     
     draw_utf8_custom(35, y0, title);
 
-    char due[32]; snprintf(due, sizeof(due), "L\xC3\xBA" "c: %s", due_str);
+    char due[32]; snprintf(due, sizeof(due), "LUC: %s", due_str);
     draw_utf8_custom(2, y1, due);
 
     char status[64];
-    if (seconds_left < 0) strcpy(status, "\xC4\x90\xC3\x83 QU\xC3\x81 H\xE1\xBA\xA0N!");
-    else snprintf(status, sizeof(status), "C\xC3\xB2n %ld ph\xC3\xBAt", (long)(seconds_left/60));
+    if (seconds_left < 0) strcpy(status, "DA QUA HAN!");
+    else snprintf(status, sizeof(status), "CON %ld PHUT", (long)(seconds_left/60));
     draw_utf8_custom(2, y2, status);
 
     u8g2_SendBuffer(&u8g2);
