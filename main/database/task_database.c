@@ -559,13 +559,20 @@ esp_err_t task_database_query_by_time(time_t start, time_t end,
 
         /* Kiểm tra due_time, start_time hoặc reminder nằm trong range */
         bool in_range = false;
-        if (entry->due_time > 0 && entry->due_time >= start && entry->due_time <= end) {
+        bool is_overdue = (strcmp(entry->status, "overdue") == 0);
+
+        if (entry->due_time > 0) {
+            /* Nếu là task quá hạn thì luôn tính là 'in range' nếu nó kết thúc trước end */
+            if (is_overdue) {
+                if (entry->due_time <= end) in_range = true;
+            } else {
+                if (entry->due_time >= start && entry->due_time <= end) in_range = true;
+            }
+        }
+        if (!in_range && entry->start_time > 0 && entry->start_time >= start && entry->start_time <= end) {
             in_range = true;
         }
-        if (entry->start_time > 0 && entry->start_time >= start && entry->start_time <= end) {
-            in_range = true;
-        }
-        if (entry->reminder > 0 && entry->reminder >= start && entry->reminder <= end) {
+        if (!in_range && entry->reminder > 0 && entry->reminder >= start && entry->reminder <= end) {
             in_range = true;
         }
 

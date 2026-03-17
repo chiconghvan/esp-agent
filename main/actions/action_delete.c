@@ -97,7 +97,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
             }
             search_result_t res[1];
             int f = 0;
-            vector_search_find_similar(query_embedding, query_buf, res, 1, &f);
+            vector_search_find_similar(query_embedding, query_buf, NULL, res, 1, &f);
             if (f == 0) {
                 format_not_found(query_buf, response, response_size);
                 return ESP_OK;
@@ -153,14 +153,60 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         }
         float query_embedding[EMBEDDING_DIM];
         openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
-        search_result_t res[1];
-        int f = 0;
-        vector_search_find_similar(query_embedding, query_buf, res, 1, &f);
-        if (f == 0) {
+        search_result_t search_results[SEARCH_TOP_K];
+        int found_count = 0;
+        vector_search_find_similar(query_embedding, query_buf, NULL, search_results, SEARCH_TOP_K, &found_count);
+        
+        if (found_count == 0) {
             format_not_found(query_buf, response, response_size);
             return ESP_OK;
         }
-        uint32_t target_id = res[0].task_id;
+
+        /* Nếu tìm thấy nhiều kết quả phù hợp -> Hỏi lại user */
+        if (found_count > 1) {
+            const task_index_t *index = task_database_get_index();
+            const task_index_entry_t **matches = calloc(found_count, sizeof(task_index_entry_t *));
+            if (!matches) return ESP_ERR_NO_MEM;
+
+            uint32_t *ctx_ids = malloc(sizeof(uint32_t) * found_count);
+            int actual_matches = 0;
+            for (int i = 0; i < found_count; i++) {
+                uint32_t tid = search_results[i].task_id;
+                for (int j = 0; j < index->count; j++) {
+                    if (index->entries[j].id == tid) {
+                        matches[actual_matches] = &index->entries[j];
+                        if (ctx_ids) ctx_ids[actual_matches] = tid;
+                        actual_matches++;
+                        break;
+                    }
+                }
+            }
+
+            snprintf(response, response_size, "❓ <b>Tìm thấy nhiều kết quả cho \"%s\". Bạn muốn hủy cái nào?</b>\n\n", query_buf);
+            int current_len = strlen(response);
+            format_task_list_short(matches, actual_matches, "Kết quả tìm thấy", response + current_len, response_size - current_len);
+            
+            // Cập nhật lại độ dài thực tế
+            current_len = strlen(response);
+
+            APPEND_SNPRINTF(response, response_size, current_len, "\n\n👉 <i>Vui lòng nhập ID task (VD: 1, 2) để hủy.</i>");
+
+            // Lưu pending action
+            cJSON *pending_json = cJSON_CreateObject();
+            cJSON_AddStringToObject(pending_json, "search_query", "");
+            cJSON_AddStringToObject(pending_json, "delete_mode", "soft");
+            dispatcher_set_pending_action(ACTION_DELETE_TASK, cJSON_PrintUnformatted(pending_json));
+            cJSON_Delete(pending_json);
+            
+            if (ctx_ids) {
+                dispatcher_set_context_tasks(ctx_ids, actual_matches);
+                free(ctx_ids);
+            }
+            free(matches);
+            return ESP_OK;
+        }
+
+        uint32_t target_id = search_results[0].task_id;
         task_record_t task;
         task_database_read(target_id, &task);
         
@@ -215,5 +261,6 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
     }
 
     s_pending_count = 0; // Xóa sạch hàng đợi sau khi dùng
+    ESP_LOGI(TAG, "Đã hoàn thành xác nhận xóa vĩnh viễn.");
     return ESP_OK;
 }

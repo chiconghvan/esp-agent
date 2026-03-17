@@ -81,6 +81,9 @@ static bool match_filter(const task_index_entry_t *entry,
             case FILTER_OP_BEFORE:      return val > 0 && val < filter->time_value;
             case FILTER_OP_AFTER:       return val > 0 && val > filter->time_value;
             case FILTER_OP_BETWEEN:
+                if (strcmp(entry->status, "overdue") == 0 && strcmp(filter->field, "due_time") == 0) {
+                    return val > 0 && val <= filter->time_value_end;
+                }
                 return val > 0 && val >= filter->time_value && val <= filter->time_value_end;
             case FILTER_OP_IS_NULL:     return val == 0;
             case FILTER_OP_IS_NOT_NULL: return val != 0;

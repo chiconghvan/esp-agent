@@ -21,6 +21,7 @@
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
 #include "display_manager.h"
+#include "network_gatekeeper.h"
 
 static const char *TAG = "telegram_bot";
 
@@ -114,15 +115,14 @@ esp_err_t telegram_bot_get_update(telegram_message_t *message)
     }
 
     /* Thực hiện request */
+    network_lock();
     esp_err_t err = esp_http_client_perform(client);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP GET thất bại: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return err;
+    int status_code = -1;
+    if (err == ESP_OK) {
+        status_code = esp_http_client_get_status_code(client);
     }
-
-    int status_code = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
+    network_unlock();
 
     if (status_code != 200) {
         ESP_LOGW(TAG, "Telegram API trả về status: %d", status_code);
@@ -280,10 +280,15 @@ esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body_str, strlen(body_str));
 
+    network_lock();
     esp_err_t err = esp_http_client_perform(client);
-    int status_code = esp_http_client_get_status_code(client);
+    int status_code = -1;
+    if (err == ESP_OK) {
+        status_code = esp_http_client_get_status_code(client);
+    }
 
     esp_http_client_cleanup(client);
+    network_unlock();
     free(body_str);
 
     if (err != ESP_OK) {

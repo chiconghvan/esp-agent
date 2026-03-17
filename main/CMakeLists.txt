@@ -27,6 +27,7 @@ set(COMPONENT_SRCS
     "utils/response_formatter.c"
     "utils/token_tracker.c"
     "utils/log_server.c"
+    "utils/network_gatekeeper.c"
     "display/vn_utils.c"
     "display/display_manager.c"
     "display/u8g2_font_iosevkacharonmono_light_13.c"

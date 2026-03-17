@@ -77,7 +77,7 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
 
         search_result_t search_results[3];
         int found = 0;
-        err = vector_search_find_similar(query_embedding, query_buf, search_results, 3, &found);
+        err = vector_search_find_similar(query_embedding, query_buf, NULL, search_results, 3, &found);
         if (err != ESP_OK || found == 0) {
             format_not_found(query_buf, response, response_size);
             return ESP_OK;

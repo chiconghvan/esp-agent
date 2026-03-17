@@ -24,6 +24,9 @@
 #include "cJSON.h"
 #include "config.h"
 #include "esp_system.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "network_gatekeeper.h"
 
 static const char *TAG = "token_tracker";
 
@@ -181,6 +184,9 @@ void token_tracker_add(token_type_t type, uint32_t prompt_tokens, uint32_t compl
     monthly_filepath(s_current_month, path, sizeof(path));
     save_stats(path, &s_monthly);
     save_stats("/spiffs/stats/total.json", &s_total);
+
+    /* Đẩy lên Firebase */
+    token_tracker_sync_upload();
 }
 
 /* --------------------------------------------------------------------------
@@ -257,4 +263,159 @@ void token_tracker_format_status(char *buffer, size_t buffer_size)
         total_cost,
         (unsigned long)esp_get_free_heap_size(),
         OPENAI_MODEL);
+}
+
+/* --------------------------------------------------------------------------
+ * Firebase Sync Logic
+ * -------------------------------------------------------------------------- */
+
+static char *build_stats_json(const token_stats_t *stats) {
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return NULL;
+    cJSON_AddNumberToObject(root, "chat_prompt", stats->chat_prompt_tokens);
+    cJSON_AddNumberToObject(root, "chat_completion", stats->chat_completion_tokens);
+    cJSON_AddNumberToObject(root, "embedding", stats->embedding_tokens);
+    cJSON_AddNumberToObject(root, "chat_calls", stats->chat_calls);
+    cJSON_AddNumberToObject(root, "emb_calls", stats->embedding_calls);
+    char *json_string = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return json_string;
+}
+
+void token_tracker_sync_upload(void) {
+    if (strlen(FIREBASE_HOST) == 0) return;
+
+    // Đẩy cả monthly và total lên 2 node khác nhau
+    char url_total[256];
+    snprintf(url_total, sizeof(url_total), "https://%s/usage/total.json?auth=%s", FIREBASE_HOST, FIREBASE_AUTH);
+    
+    char path_m[48];
+    monthly_filepath(s_current_month, path_m, sizeof(path_m));
+    char url_month[256];
+    snprintf(url_month, sizeof(url_month), "https://%s/usage/monthly/%d.json?auth=%s", FIREBASE_HOST, s_current_month, FIREBASE_AUTH);
+
+    esp_http_client_config_t config = {
+        .method = HTTP_METHOD_PUT,
+        .timeout_ms = 10000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    // Upload Total
+    config.url = url_total;
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client) {
+        char *data = build_stats_json(&s_total);
+        if (data) {
+            esp_http_client_set_post_field(client, data, strlen(data));
+            esp_http_client_set_header(client, "Content-Type", "application/json");
+            network_lock();
+            esp_http_client_perform(client);
+            network_unlock();
+            free(data);
+        }
+        esp_http_client_cleanup(client);
+    }
+
+    // Upload Monthly
+    config.url = url_month;
+    client = esp_http_client_init(&config);
+    if (client) {
+        char *data = build_stats_json(&s_monthly);
+        if (data) {
+            esp_http_client_set_post_field(client, data, strlen(data));
+            esp_http_client_set_header(client, "Content-Type", "application/json");
+            network_lock();
+            esp_http_client_perform(client);
+            network_unlock();
+            free(data);
+        }
+        esp_http_client_cleanup(client);
+    }
+}
+
+esp_err_t token_tracker_sync_download(void) {
+    if (strlen(FIREBASE_HOST) == 0) return ESP_FAIL;
+
+    ESP_LOGI(TAG, "Đang tải API Usage từ Firebase...");
+    
+    char url_total[256];
+    snprintf(url_total, sizeof(url_total), "https://%s/usage/total.json?auth=%s", FIREBASE_HOST, FIREBASE_AUTH);
+    
+    int mm = get_current_yyyymm();
+    char url_month[256];
+    snprintf(url_month, sizeof(url_month), "https://%s/usage/monthly/%d.json?auth=%s", FIREBASE_HOST, mm, FIREBASE_AUTH);
+
+    esp_http_client_config_t config = {
+        .method = HTTP_METHOD_GET,
+        .timeout_ms = 10000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    // Download Total
+    config.url = url_total;
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client) {
+        network_lock();
+        if (esp_http_client_perform(client) == ESP_OK && esp_http_client_get_status_code(client) == 200) {
+            int content_len = esp_http_client_get_content_length(client);
+            if (content_len > 0) {
+                char *buf = malloc(content_len + 1);
+                if (buf) {
+                    esp_http_client_read(client, buf, content_len);
+                    buf[content_len] = '\0';
+                    if (strcmp(buf, "null") != 0) {
+                        cJSON *root = cJSON_Parse(buf);
+                        if (root) {
+                            s_total.chat_prompt_tokens = cJSON_GetObjectItem(root, "chat_prompt") ? cJSON_GetObjectItem(root, "chat_prompt")->valueint : s_total.chat_prompt_tokens;
+                            s_total.chat_completion_tokens = cJSON_GetObjectItem(root, "chat_completion") ? cJSON_GetObjectItem(root, "chat_completion")->valueint : s_total.chat_completion_tokens;
+                            s_total.embedding_tokens = cJSON_GetObjectItem(root, "embedding") ? cJSON_GetObjectItem(root, "embedding")->valueint : s_total.embedding_tokens;
+                            s_total.chat_calls = cJSON_GetObjectItem(root, "chat_calls") ? cJSON_GetObjectItem(root, "chat_calls")->valueint : s_total.chat_calls;
+                            s_total.embedding_calls = cJSON_GetObjectItem(root, "emb_calls") ? cJSON_GetObjectItem(root, "emb_calls")->valueint : s_total.embedding_calls;
+                            cJSON_Delete(root);
+                            save_stats("/spiffs/stats/total.json", &s_total);
+                        }
+                    }
+                    free(buf);
+                }
+            }
+        }
+        esp_http_client_cleanup(client);
+        network_unlock();
+    }
+
+    // Download Monthly
+    config.url = url_month;
+    client = esp_http_client_init(&config);
+    if (client) {
+        network_lock();
+        if (esp_http_client_perform(client) == ESP_OK && esp_http_client_get_status_code(client) == 200) {
+            int content_len = esp_http_client_get_content_length(client);
+            if (content_len > 0) {
+                char *buf = malloc(content_len + 1);
+                if (buf) {
+                    esp_http_client_read(client, buf, content_len);
+                    buf[content_len] = '\0';
+                    if (strcmp(buf, "null") != 0) {
+                        cJSON *root = cJSON_Parse(buf);
+                        if (root) {
+                            s_monthly.chat_prompt_tokens = cJSON_GetObjectItem(root, "chat_prompt") ? cJSON_GetObjectItem(root, "chat_prompt")->valueint : s_monthly.chat_prompt_tokens;
+                            s_monthly.chat_completion_tokens = cJSON_GetObjectItem(root, "chat_completion") ? cJSON_GetObjectItem(root, "chat_completion")->valueint : s_monthly.chat_completion_tokens;
+                            s_monthly.embedding_tokens = cJSON_GetObjectItem(root, "embedding") ? cJSON_GetObjectItem(root, "embedding")->valueint : s_monthly.embedding_tokens;
+                            s_monthly.chat_calls = cJSON_GetObjectItem(root, "chat_calls") ? cJSON_GetObjectItem(root, "chat_calls")->valueint : s_monthly.chat_calls;
+                            s_monthly.embedding_calls = cJSON_GetObjectItem(root, "emb_calls") ? cJSON_GetObjectItem(root, "emb_calls")->valueint : s_monthly.embedding_calls;
+                            cJSON_Delete(root);
+                            char path[48];
+                            monthly_filepath(mm, path, sizeof(path));
+                            save_stats(path, &s_monthly);
+                        }
+                    }
+                    free(buf);
+                }
+            }
+        }
+        esp_http_client_cleanup(client);
+        network_unlock();
+    }
+
+    return ESP_OK;
 }

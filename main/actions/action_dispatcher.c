@@ -31,6 +31,10 @@ static uint32_t s_context_task_ids[20];
 static int s_context_task_count = 0;
 static char s_last_action_json[JSON_BUFFER_SIZE] = "(chưa có action nào)";
 
+/* Pending selection state */
+static action_type_t s_pending_intent = ACTION_UNKNOWN;
+static char *s_pending_data_json = NULL;
+
 void dispatcher_set_context_tasks(const uint32_t *ids, int count)
 {
     if (count > 20) count = 20;
@@ -45,6 +49,70 @@ void action_dispatcher_get_last_json(char *buffer, size_t buffer_size)
     if (buffer == NULL || buffer_size == 0) return;
     strncpy(buffer, s_last_action_json, buffer_size - 1);
     buffer[buffer_size - 1] = '\0';
+}
+
+void dispatcher_set_pending_action(action_type_t intent, const char *data_json)
+{
+    s_pending_intent = intent;
+    if (s_pending_data_json) free(s_pending_data_json);
+    s_pending_data_json = data_json ? strdup(data_json) : NULL;
+    ESP_LOGI(TAG, "Set pending action: intent=%d", (int)intent);
+}
+
+void dispatcher_clear_pending_action(void)
+{
+    s_pending_intent = ACTION_UNKNOWN;
+    if (s_pending_data_json) {
+        free(s_pending_data_json);
+        s_pending_data_json = NULL;
+    }
+}
+
+static bool is_id_list(const char *msg, uint32_t *out_ids, int *out_count, int max_ids)
+{
+    if (msg == NULL || strlen(msg) == 0) return false;
+    
+    // Kiểm tra xem message có chứa số không
+    bool has_digit = false;
+    for (const char *p = msg; *p; p++) {
+        if (*p >= '0' && *p <= '9') { has_digit = true; break; }
+    }
+    if (!has_digit) return false;
+
+    // Danh sách các từ được phép xuất hiện (ngoài số và dấu ngăn cách)
+    // "chọn", "cái", "số", "task", "và", "id", "#"
+    // Nếu có từ khác lạ -> không phải ID list thuần túy -> để AI xử lý
+    
+    char tmp[256];
+    strncpy(tmp, msg, sizeof(tmp)-1);
+    tmp[sizeof(tmp)-1] = '\0';
+    
+    *out_count = 0;
+    char *tok = strtok(tmp, " ,;#\t\n\r");
+    while (tok != NULL && *out_count < max_ids) {
+        // Kiểm tra xem token này là số hay là từ khóa bổ trợ
+        char *endptr;
+        uint32_t id = (uint32_t)strtoul(tok, &endptr, 10);
+        
+        if (*endptr == '\0') {
+            // Là số thuần túy
+            out_ids[(*out_count)++] = id;
+        } else {
+            // Không phải số -> Kiểm tra xem có phải từ khóa bổ trợ không
+            // Chuyển về lowercase để so sánh
+            for(int i=0; tok[i]; i++) if(tok[i]>='A' && tok[i]<='Z') tok[i]+=32;
+            
+            if (strcmp(tok, "task") != 0 && strcmp(tok, "số") != 0 && 
+                strcmp(tok, "id") != 0 && strcmp(tok, "và") != 0 &&
+                strcmp(tok, "chọn") != 0 && strcmp(tok, "cái") != 0) {
+                // Có từ lạ -> Trả về false để AI parse
+                return false;
+            }
+        }
+        tok = strtok(NULL, " ,;#\t\n\r");
+    }
+    
+    return (*out_count > 0);
 }
 
 /* ==========================================================================
@@ -70,13 +138,14 @@ static const char *PROMPT_B1 =
     "QUY TẮC:\n"
     "1. \"bao nhiêu\", \"mấy cái\" → QUERY_TASKS\n"
     "2. \"khi nào\", \"thời hạn\" của 1 task cụ thể → GET_TASK_DETAIL\n"
-    "3. Nhập tên task không kèm hành động → SEARCH_SEMANTIC\n"
+    "3. Nhập tên task KHÔNG kèm hành động → SEARCH_SEMANTIC\n"
     "4. \"tổng kết\", \"tình hình chung\" → TASK_SUMMARY\n"
     "5. \"hủy\"/\"bỏ\" hoặc \"xóa hẳn\" → DELETE_TASK\n"
     "6. Sự kiện kéo dài nhiều ngày → CREATE_TASK\n"
-    "7. Hỏi CHUNG về danh sách/tất cả (\"các ngày kỉ niệm\", \"những sinh nhật\", \"tất cả lễ\") → QUERY_TASKS\n"
-    "8. Hỏi về 1 task CỤ THỂ bằng tên riêng (\"sinh nhật vợ\", \"báo cáo X\", \"họp Y\") → SEARCH_SEMANTIC (ưu tiên hơn quy tắc 7)\n"
-    "9. Khi không chắc → ƯU TIÊN QUERY_TASKS hoặc SEARCH_SEMANTIC, TRÁNH CHITCHAT\n\n"
+    "7. Hỏi CHUNG về danh sách/tất cả (\"kỉ niệm\", \"sinh nhật\", \"lễ\") → QUERY_TASKS\n"
+    "8. Hỏi thông tin 1 task (\"về task X\", \"task Y như nào\") → SEARCH_SEMANTIC\n"
+    "9. Khi không chắc → ƯU TIÊN QUERY_TASKS hoặc SEARCH_SEMANTIC, TRÁNH CHITCHAT\n"
+    "10. QUAN TRỌNG: Nếu có động từ hành động ở phần đầu (hoàn thành, xong, đã làm, hủy, xóa, sửa, cập nhật, đổi, tạo, nhắc...) → BẮT BUỘC chọn nhóm MUTATION (CREATE/UPDATE/COMPLETE/DELETE). Tuyệt đối KHÔNG chọn SEARCH_SEMANTIC hay GET_TASK_DETAIL trong trường hợp này.\n\n"
     "CHỈ trả JSON thuần, KHÔNG markdown:\n"
     "{\"intent\": \"...\", \"confidence\": 0.0-1.0}";
 
@@ -499,6 +568,50 @@ esp_err_t action_dispatcher_handle(const char *user_message,
         return action_delete_confirm_hard(response_buffer, buffer_size);
     }
 
+    /* ======= Xử lý ID Selection (phản hồi cho Ambiguity) ======= */
+    uint32_t selected_ids[20];
+    int selected_count = 0;
+    if (s_pending_intent != ACTION_UNKNOWN && s_pending_data_json != NULL &&
+        is_id_list(user_message, selected_ids, &selected_count, 20)) {
+        
+        ESP_LOGI(TAG, "ID Selection detected for intent %d: count=%d", (int)s_pending_intent, selected_count);
+        
+        // Merge selected IDs vào s_pending_data_json
+        cJSON *root = cJSON_Parse(s_pending_data_json);
+        if (root) {
+            cJSON_DeleteItemFromObject(root, "task_ids");
+            cJSON *arr = cJSON_CreateArray();
+            for (int i = 0; i < selected_count; i++) {
+                cJSON_AddItemToArray(arr, cJSON_CreateNumber(selected_ids[i]));
+            }
+            cJSON_AddItemToObject(root, "task_ids", arr);
+            
+            // "Xóa" search_query để handler biết là dùng IDs
+            cJSON_DeleteItemFromObject(root, "search_query");
+            
+            char *merged_json = cJSON_PrintUnformatted(root);
+            cJSON_Delete(root);
+            
+            if (merged_json) {
+                action_type_t intent = s_pending_intent;
+                dispatcher_clear_pending_action(); // Clear trước khi dispatch để tránh loop nếu handler lại set pending
+                
+                esp_err_t res = ESP_FAIL;
+                switch (intent) {
+                    case ACTION_COMPLETE_TASK: res = action_complete_task(merged_json, response_buffer, buffer_size); break;
+                    case ACTION_UPDATE_TASK:   res = action_update_task(merged_json, response_buffer, buffer_size); break;
+                    case ACTION_DELETE_TASK:   res = action_delete_task(merged_json, response_buffer, buffer_size); break;
+                    default: break;
+                }
+                free(merged_json);
+                return res;
+            }
+        }
+    }
+
+    // Nếu không phải ID list, xóa pending action cũ (người dùng đã đổi ý hỏi sang cái khác)
+    dispatcher_clear_pending_action();
+
     /* ======= B1: Xác định intent ======= */
     action_type_t intent = ACTION_UNKNOWN;
     float confidence = 0.0f;
@@ -571,6 +684,40 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     }
 
     /* ======= Dispatch đến handler ======= */
+    cJSON *final_data = cJSON_Parse(data_json);
+    if (final_data && s_pending_intent != ACTION_UNKNOWN && s_pending_data_json != NULL) {
+        // Kiểm tra xem AI có parse ra IDs không
+        cJSON *ids_arr = cJSON_GetObjectItem(final_data, "task_ids");
+        bool has_ids = (ids_arr && cJSON_GetArraySize(ids_arr) > 0);
+        
+        // Nếu AI parse ra IDs nhưng không có updates/query (do user chỉ nói ID), 
+        // thì merge với pending action cũ
+        if (has_ids && intent == s_pending_intent) {
+            cJSON *pending_root = cJSON_Parse(s_pending_data_json);
+            if (pending_root) {
+                ESP_LOGI(TAG, "Merging AI IDs with pending action data");
+                // Copy các field từ pending_root sang final_data (trừ task_ids và search_query)
+                cJSON *child = pending_root->child;
+                while (child) {
+                    if (strcmp(child->string, "task_ids") != 0 && strcmp(child->string, "search_query") != 0) {
+                        cJSON_DeleteItemFromObject(final_data, child->string);
+                        cJSON_AddItemToObject(final_data, child->string, cJSON_Duplicate(child, true));
+                    }
+                    child = child->next;
+                }
+                cJSON_Delete(pending_root);
+                
+                // Cập nhật lại data_json
+                free(data_json);
+                data_json = cJSON_PrintUnformatted(final_data);
+            }
+        }
+    }
+    if (final_data) cJSON_Delete(final_data);
+
+    // Clear pending state sau khi đã lấy được data
+    dispatcher_clear_pending_action();
+
     switch (intent) {
         case ACTION_CREATE_TASK:
             err = action_create_task(data_json, response_buffer, buffer_size);

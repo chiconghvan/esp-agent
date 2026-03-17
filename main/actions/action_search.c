@@ -69,8 +69,8 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
     search_result_t search_results[SEARCH_TOP_K];
     int found_count = 0;
 
-    err = vector_search_find_similar(query_embedding, query_buf, search_results,
-                                      SEARCH_TOP_K, &found_count);
+    err = vector_search_find_similar(query_embedding, query_buf, status_buf[0] ? status_buf : NULL,
+                                      search_results, SEARCH_TOP_K, &found_count);
 
     if (err != ESP_OK || found_count == 0) {
         format_not_found(query_buf, response, response_size);
@@ -92,9 +92,6 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
         /* Tìm pointer trong index */
         for (int k = 0; k < index->count; k++) {
             if (index->entries[k].id == tid) {
-                if (status_buf[0] && strstr(status_buf, index->entries[k].status) == NULL) {
-                    break; /* Bỏ qua nếu status của task không nằm trong danh sách status_buf cho phép */
-                }
                 matches[task_count++] = &index->entries[k];
                 break;
             }

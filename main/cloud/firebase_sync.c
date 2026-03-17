@@ -16,6 +16,7 @@
 #include "freertos/queue.h"
 #include "wifi_manager.h"
 #include "display_manager.h"
+#include "network_gatekeeper.h"
 #include <string.h>
 
 static const char *TAG = "firebase_sync";
@@ -97,6 +98,7 @@ static esp_err_t http_put_task(const task_record_t *task)
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
+    network_lock();
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         int status_code = esp_http_client_get_status_code(client);
@@ -109,6 +111,7 @@ static esp_err_t http_put_task(const task_record_t *task)
     } else {
         ESP_LOGE(TAG, "Lỗi HTTP POST/PUT: %s", esp_err_to_name(err));
     }
+    network_unlock();
 
     free(post_data);
     esp_http_client_cleanup(client);
@@ -140,6 +143,7 @@ static esp_err_t http_delete_task(uint32_t task_id)
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) return ESP_FAIL;
 
+    network_lock();
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         int status_code = esp_http_client_get_status_code(client);
@@ -152,6 +156,7 @@ static esp_err_t http_delete_task(uint32_t task_id)
     } else {
         ESP_LOGE(TAG, "Lỗi HTTP DELETE: %s", esp_err_to_name(err));
     }
+    network_unlock();
 
     esp_http_client_cleanup(client);
     return err;
@@ -292,10 +297,12 @@ esp_err_t firebase_sync_download_all(void)
         return ESP_FAIL;
     }
 
+    network_lock();
     esp_err_t err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Lỗi mở client: %s", esp_err_to_name(err));
         esp_http_client_cleanup(client);
+        network_unlock();
         return ESP_FAIL;
     }
 
@@ -303,6 +310,7 @@ esp_err_t firebase_sync_download_all(void)
     if (esp_http_client_get_status_code(client) != 200) {
         ESP_LOGW(TAG, "Firebase get status = %d", esp_http_client_get_status_code(client));
         esp_http_client_cleanup(client);
+        network_unlock();
         return ESP_FAIL;
     }
 
@@ -326,6 +334,7 @@ esp_err_t firebase_sync_download_all(void)
     }
     buffer[total_read_len] = '\0';
     esp_http_client_cleanup(client);
+    network_unlock();
 
     // Kịch bản DB rỗng trên firebase trả về "null"
     if (strcmp(buffer, "null") == 0 || total_read_len <= 4) {

@@ -63,6 +63,7 @@ esp_err_t vector_search_delete(uint32_t task_id);
  * @return esp_err_t ESP_OK
  */
 esp_err_t vector_search_find_similar(const float *query_embedding, const char *query_text,
+                                      const char *status_filter,
                                       search_result_t *results, int max_results,
                                       int *found_count);
 

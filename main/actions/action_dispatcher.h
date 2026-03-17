@@ -87,6 +87,16 @@ void dispatcher_set_context_tasks(const uint32_t *ids, int count);
  */
 void action_dispatcher_get_last_json(char *buffer, size_t buffer_size);
 
+/**
+ * @brief Lưu trạng thái chờ user chọn ID cho action tiếp theo
+ */
+void dispatcher_set_pending_action(action_type_t intent, const char *data_json);
+
+/**
+ * @brief Xóa trạng thái chờ
+ */
+void dispatcher_clear_pending_action(void);
+
 /* ========================= Action Handlers =============================== */
 
 esp_err_t action_create_task(const char *data_json, char *response, size_t response_size);

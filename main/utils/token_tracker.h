@@ -58,6 +58,12 @@ token_stats_t token_tracker_get_monthly(void);
 token_stats_t token_tracker_get_total(void);
 
 /**
+ * @brief Tải thống kê từ Firebase về SPIFFS (chạy đồng bộ lúc khởi động)
+ * @return esp_err_t 
+ */
+esp_err_t token_tracker_sync_download(void);
+
+/**
  * @brief Ước lượng chi phí VND từ thống kê
  *
  * @param stats Thống kê token
@@ -72,5 +78,10 @@ double token_tracker_estimate_cost_vnd(const token_stats_t *stats);
  * @param buffer_size Kích thước buffer
  */
 void token_tracker_format_status(char *buffer, size_t buffer_size);
+
+/**
+ * @brief Đẩy thống kê hiện tại lên Firebase (chạy không block)
+ */
+void token_tracker_sync_upload(void);
 
 #endif /* TOKEN_TRACKER_H */

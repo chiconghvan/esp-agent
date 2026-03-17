@@ -266,7 +266,9 @@ static void format_due(time_t due, char *buf, size_t sz)
     nt.tm_hour = 0; nt.tm_min = 0; nt.tm_sec = 0;
     time_t t0 = mktime(&nt);
 
-    if (due < t0 + 86400)
+    if (due < t0)
+        snprintf(buf, sz, "Quá hạn! %02d/%02d", ti.tm_mday, ti.tm_mon + 1);
+    else if (due < t0 + 86400)
         snprintf(buf, sz, "Hôm nay, %02d:%02d", ti.tm_hour, ti.tm_min);
     else if (due < t0 + 2*86400)
         snprintf(buf, sz, "Ngày mai, %02d:%02d", ti.tm_hour, ti.tm_min);
@@ -551,11 +553,33 @@ static void display_task(void *arg)
 
         if (s_btn_pressed) {
             s_btn_pressed = false;
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
             if (gpio_get_level(BOOT_BTN_GPIO) == 0) {
-                if (s_state == SCREEN_IDLE) slide_to_next();
-                else display_show_idle();
-                while(gpio_get_level(BOOT_BTN_GPIO) == 0) vTaskDelay(10);
+                // Đã nhấn: Đợi thả nút lần 1
+                while (gpio_get_level(BOOT_BTN_GPIO) == 0) vTaskDelay(pdMS_TO_TICKS(10));
+                
+                // Đã thả: Đợi xem có nhấn lần 2 trong vòng 300ms không
+                bool double_click = false;
+                for (int i = 0; i < 30; i++) {
+                    vTaskDelay(pdMS_TO_TICKS(10));
+                    if (gpio_get_level(BOOT_BTN_GPIO) == 0) {
+                        double_click = true;
+                        break;
+                    }
+                }
+
+                if (double_click) {
+                    // Double Click: Chuyển VIEW MODE
+                    s_view_mode = (s_view_mode == VIEW_MODE_DEADLINE) ? VIEW_MODE_TODAY : VIEW_MODE_DEADLINE;
+                    s_cur_idx = 0;
+                    display_show_idle();
+                    // Đợi thả nút lần 2
+                    while (gpio_get_level(BOOT_BTN_GPIO) == 0) vTaskDelay(pdMS_TO_TICKS(10));
+                } else {
+                    // Single Click: Next hoặc quay lại Idle
+                    if (s_state == SCREEN_IDLE) slide_to_next();
+                    else display_show_idle();
+                }
             }
         }
 

@@ -35,6 +35,7 @@
 #include "firebase_sync.h"
 #include "time_utils.h"
 #include "display_manager.h"
+#include "network_gatekeeper.h"
 #include "log_server.h"
 #include "response_formatter.h"
 #include "esp_ota_ops.h"
@@ -269,6 +270,7 @@ void app_main(void)
 
     init_system_led();
     print_banner();
+    network_gatekeeper_init();
 
     /* Khởi tạo màn hình OLED (sớm nhất để show boot progress) */
     if (display_init(DISPLAY_SDA_GPIO, DISPLAY_SCL_GPIO) != ESP_OK) {
@@ -325,7 +327,8 @@ void app_main(void)
     vector_search_audit_and_rebuild();
 #endif
 
-    /* Khởi tạo Token Tracker */
+    /* Khởi tạo Token Tracker & Đồng bộ */
+    token_tracker_sync_download();
     token_tracker_init();
 
     /* Khởi động Log Web Server (sau khi WiFi + IP ổn định) */

@@ -21,6 +21,7 @@
 #include "esp_crt_bundle.h"
 #include "cJSON.h"
 #include "token_tracker.h"
+#include "network_gatekeeper.h"
 
 static const char *TAG = "openai_client";
 
@@ -93,10 +94,12 @@ static esp_err_t openai_http_post(const char *endpoint, const char *body_str,
     esp_http_client_set_post_field(client, body_str, strlen(body_str));
 
     /* Thực hiện request */
+    network_lock();
     esp_err_t err = esp_http_client_perform(client);
     int status_code = esp_http_client_get_status_code(client);
 
     esp_http_client_cleanup(client);
+    network_unlock();
 
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "HTTP POST thất bại: %s", esp_err_to_name(err));

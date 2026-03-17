@@ -1,20 +1,24 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh 4.1.0
+# ESP-Agent: Trợ lý nhắc việc thông minh 4.2.0
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — Quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED U8g2 Premium + Firebase Cloud Sync.
 
 ---
 
-## 📋 Tính năng mới (v4.1.0)
+## 📋 Tính năng mới (v4.2.0)
 
-- **Bộ công cụ Font chuyên dụng**:
-    - `u8g2_font_util.py`: Tự động chuyển đổi file `.ttf` bất kỳ sang mảng C cho U8g2.
-    - **Sửa lỗi Baseline**: Thuật toán căn chỉnh chân chữ cực chuẩn, không còn tình trạng chữ cao thấp không đều.
-    - **Preview OLED thực tế**: Tự động sinh ảnh mô phỏng pixel-perfect 128x64 trên máy tính trước khi nạp vào chip.
-    - `switch_font.py`: Kịch bản 1-click để áp dụng font mới vào toàn bộ project (tự động vá code, cấu hình CMake).
-- **Trải nghiệm mượt mà 30 FPS**:
-    - **Sliding Animation**: Hiệu ứng trượt ngang cực nhanh khi chuyển đổi nội dung task.
-    - **I2C Fast Mode**: Tăng tốc bus dữ liệu lên **400kHz**, loại bỏ hoàn toàn hiện tượng lag khi render font lớn.
-- **Hỗ trợ Tiếng Việt 100%**: Mở rộng dải mã Unicode để hiển thị hoàn hảo các ký tự phức tạp (Ầ, ầ, Ắ, ắ...).
+- **Cơ chế Network Gatekeeper (Mutex)**:
+    - **Tuần tự hóa (Serialization)**: Sử dụng Mutex để xếp hàng (queue up) tất cả các yêu cầu HTTPS (SSL).
+    - **Chống tràn RAM**: Loại bỏ hoàn toàn lỗi `ESP_ERR_NO_MEM` do Handshake SSL chồng chéo khi đồng bộ Firebase và xử lý hội thoại AI cùng lúc.
+- **Tương tác OLED nâng cao**:
+    - **Double-click Interaction**: Nhấn đúp nút BOOT để chuyển đổi nhanh giữa chế độ xem **Deadline** (3 ngày tới) và **Today** (chỉ hôm nay).
+    - **Optimized Startup**: Thanh tiến trình khởi động đồng bộ hóa thời gian thực với các bước Initialization kèm nhãn tiếng Việt.
+- **Xử lý ý định thông minh (Ambiguity Resolver)**:
+    - **ID Listening**: Tự động gợi ý và lắng nghe ID từ người dùng khi tìm kiếm Semantic trả về nhiều kết quả tương đồng.
+    - **Smart Extraction**: Thuật toán tự bóc tách số ID từ ngôn ngữ tự nhiên (Vd: "số 1", "task 2 và 3", "chọn cái #5").
+    - **Hợp nhất dữ liệu (Data Merging)**: Tự động bảo lưu thông tin thay đổi (update fields) khi người dùng chọn ID từ danh sách gợi ý.
+- **Đồng bộ Data Usage**: Lưu và đồng bộ hạn mức sử dụng API lên Firebase Cloud, không bị mất dữ liệu khi nạp lại firmware.
+
+## 📋 Tính năng nổi bật (v4.1.0)
 
 ## 📋 Tính năng nổi bật (v4.0.0)
 
@@ -89,6 +93,6 @@ idf.py flash monitor
 ## 📝 Giấy phép & Tác giả
 Dự án được phát hành dưới giấy phép **MIT**.
 
-**Phiên bản:** 4.1.0  
+**Phiên bản:** 4.2.0  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-16 (U8g2 Font Suite, 30 FPS Sliding & Baseline alignment fix)
+**Cập nhật cuối:** 2026-03-17 (Network Gatekeeper, Double-click OLED & ID selection listening)

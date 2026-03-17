@@ -247,13 +247,59 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
         /* Tìm task matching cao nhất */
         search_result_t search_results[SEARCH_TOP_K];
         int found_count = 0;
-
-        err = vector_search_find_similar(query_embedding, query_buf, search_results,
+        err = vector_search_find_similar(query_embedding, query_buf, NULL, search_results,
                                           SEARCH_TOP_K, &found_count);
 
         if (err != ESP_OK || found_count == 0) {
             cJSON_Delete(data);
             format_not_found(query_buf, response, response_size);
+            return ESP_OK;
+        }
+
+        /* Nếu tìm thấy nhiều kết quả phù hợp (đều > threshold) -> Hỏi lại user */
+        if (found_count > 1) {
+            const task_index_t *index = task_database_get_index();
+            const task_index_entry_t **matches = calloc(found_count, sizeof(task_index_entry_t *));
+            if (!matches) {
+                cJSON_Delete(data);
+                return ESP_ERR_NO_MEM;
+            }
+
+            uint32_t *ctx_ids = malloc(sizeof(uint32_t) * found_count);
+            int actual_matches = 0;
+            for (int i = 0; i < found_count; i++) {
+                uint32_t tid = search_results[i].task_id;
+                for (int j = 0; j < index->count; j++) {
+                    if (index->entries[j].id == tid) {
+                        matches[actual_matches] = &index->entries[j];
+                        if (ctx_ids) ctx_ids[actual_matches] = tid;
+                        actual_matches++;
+                        break;
+                    }
+                }
+            }
+
+            snprintf(response, response_size, "❓ <b>Tìm thấy nhiều kết quả cho \"%s\". Bạn muốn cập nhật cái nào?</b>\n\n", query_buf);
+            int current_len = strlen(response);
+            format_task_list_short(matches, actual_matches, "Kết quả tìm thấy", response + current_len, response_size - current_len);
+            
+            // Cập nhật lại độ dài thực tế
+            current_len = strlen(response);
+
+            // Thêm hướng dẫn nhập ID
+            APPEND_SNPRINTF(response, response_size, current_len, "\n\n👉 <i>Vui lòng nhập ID task (VD: 1, 2) để cập nhật thông tin đã nêu.</i>");
+
+            // Lưu pending action (kèm theo các trường updates)
+            cJSON_SetValuestring(cJSON_GetObjectItem(data, "search_query"), "");
+            cJSON_DeleteItemFromObject(data, "task_ids");
+            dispatcher_set_pending_action(ACTION_UPDATE_TASK, cJSON_PrintUnformatted(data));
+            
+            if (ctx_ids) {
+                dispatcher_set_context_tasks(ctx_ids, actual_matches);
+                free(ctx_ids);
+            }
+            free(matches);
+            cJSON_Delete(data);
             return ESP_OK;
         }
 
