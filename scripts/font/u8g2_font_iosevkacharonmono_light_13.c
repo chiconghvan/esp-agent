@@ -4,9 +4,6 @@
   Glyphs: 617/617
   BBX Build Mode: 0
 */
-#include <stdint.h>
-#include <u8g2.h>
-
 const uint8_t u8g2_font_iosevkacharonmono_light_13[9030] U8G2_FONT_SECTION("u8g2_font_iosevkacharonmono_light_13") = 
   "i\0\3\2\3\5\3\5\4\10\22\377\375\12\375\13\376\1w\2\356\11\0 \5\0\204\17!\7R\206"
   "\237~\24\42\7#\276\217\304%#\21N\204\257\226h\220\222,\211*C\322\226D\0$\21e\205\257"

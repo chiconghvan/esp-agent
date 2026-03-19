@@ -4,7 +4,7 @@ main/config.h
 managed_components/
 sdkconfig
 sdkconfig.old
-scripts/
+
 
 # Python
 __pycache__/
@@ -19,5 +19,3 @@ venv/
 .idea/
 *.swp
 *.bak
-
-scripts/

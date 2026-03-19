@@ -30,8 +30,11 @@ set(COMPONENT_SRCS
     "utils/network_gatekeeper.c"
     "display/vn_utils.c"
     "display/display_manager.c"
+    "display/u8g2_font_iosevkacharonmono_light_9.c"
+    "display/u8g2_font_iosevkacharonmono_light_10.c"
+    "display/u8g2_font_iosevkacharonmono_light_11.c"
     "display/u8g2_font_iosevkacharonmono_light_13.c"
-)
+    "display/u8g2_font_cascadiacode_light_11.c")
 
 set(COMPONENT_INCLUDE_DIRS
     "."

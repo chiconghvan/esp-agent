@@ -276,17 +276,17 @@ void app_main(void)
     if (display_init(DISPLAY_SDA_GPIO, DISPLAY_SCL_GPIO) != ESP_OK) {
         ESP_LOGW(TAG, "OLED init thất bại, tiếp tục không màn hình");
     }
-    display_boot_progress(10, "Starting...");
+    display_boot_progress(0, "Starting...");
 
     /* Bước 1: Khởi tạo NVS */
     ESP_ERROR_CHECK(init_nvs());
 
     /* Bước 2: Kết nối WiFi */
-    display_boot_progress(30, "Ket noi Wifi");
+    display_boot_progress(10, "Kết nối Wifi");
     ESP_LOGD(TAG, "Kết nối WiFi...");
     esp_err_t err = wifi_manager_init();
     if (err != ESP_OK) {
-        display_boot_progress(30, "WiFi Error!");
+        display_boot_progress(10, "WiFi Error!");
         ESP_LOGE(TAG, "WiFi thất bại! Khởi động lại sau 10 giây...");
         vTaskDelay(pdMS_TO_TICKS(10000));
         esp_restart();
@@ -296,11 +296,11 @@ void app_main(void)
     wifi_manager_start_sntp();
 
     /* Bước 3: Khởi tạo Database (SPIFFS) */
-    display_boot_progress(65, "Khoi tao SPIFFS");
+    display_boot_progress(20, "Khởi tạo SPIFFS");
     ESP_LOGD(TAG, "Khởi tạo database...");
     err = task_database_init();
     if (err != ESP_OK) {
-        display_boot_progress(65, "DB Error!");
+        display_boot_progress(20, "SPIFFS Error!");
         ESP_LOGE(TAG, "Database thất bại! Khởi động lại...");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
@@ -308,7 +308,7 @@ void app_main(void)
 
 #if ENABLE_FIREBASE_SYNC
     /* Khởi tạo Firebase Sync Background Queue */
-    display_boot_progress(75, "Dong bo du lieu");
+    display_boot_progress(40, "Đồng bộ dữ liệu");
     firebase_sync_init();
 
     /* PULL ON BOOT: Nạp lại CSDL từ Cloud nếu ổ chứa nội gián SPIFFS đang trống */
@@ -319,7 +319,7 @@ void app_main(void)
         /* PUSH ON BOOT */
         firebase_sync_upload_all();
     }
-    display_boot_progress(80, "Done Sync.");
+    display_boot_progress(60, "Done Sync.");
 #endif
 
 #if ENABLE_OPENAI_CLIENT
@@ -336,7 +336,7 @@ void app_main(void)
 
 #if ENABLE_TELEGRAM_BOT
     /* Bước 4: Khởi tạo Telegram Bot */
-    display_boot_progress(95, "Ket noi Telegram");
+    display_boot_progress(80, "Kết nối Telegram");
     err = telegram_bot_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Telegram Bot thất bại!");
@@ -350,7 +350,7 @@ void app_main(void)
     }
 
     /* Chuyển sang màn hình Idle + start display task */
-    display_boot_progress(100, "SAN SANG");
+    display_boot_progress(100, "SẴN SÀNG");
     vTaskDelay(pdMS_TO_TICKS(500));
     display_show_idle();
     display_start_task();

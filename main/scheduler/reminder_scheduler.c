@@ -64,20 +64,27 @@ static void reminder_task(void *arg)
             const task_index_entry_t *e = &idx_start->entries[i];
             if (strcmp(e->status, "pending") != 0 || e->start_time == 0) continue;
             
-            // Nếu đã đến start_time và chưa từng nhắc (reminder < start_time)
-            if (now >= e->start_time && e->reminder < e->start_time) {
+            // Nếu đã qua start_time
+            if (now >= e->start_time) {
                 task_record_t ev;
                 if (task_database_read(e->id, &ev) == ESP_OK) {
-                    char m[RESPONSE_BUFFER_SIZE];
-                    char time_buf[64];
-                    time_utils_format_vietnamese(ev.start_time, time_buf, sizeof(time_buf));
-                    snprintf(m, sizeof(m), "🎬 <b>BẮT ĐẦU: %s</b>\n📌 [#%lu] %s\n⏰ Bắt đầu lúc: %s", 
-                             ev.type, (unsigned long)ev.id, ev.title, time_buf);
-                    
-                    if (telegram_bot_send_default(m) == ESP_OK) {
-                        display_show_alert(ev.id, ev.title, "Started!", 0);
-                        ev.reminder = now; // Đánh dấu đã nhắc
-                        task_database_update(&ev);
+                    // Kiểm tra xem đã thông báo Start Time chưa bằng cách tìm tag ẩn "[S]" trong notes
+                    if (strstr(ev.notes, "[S]") == NULL) {
+                        char m[RESPONSE_BUFFER_SIZE];
+                        char time_buf[64];
+                        time_utils_format_vietnamese(ev.start_time, time_buf, sizeof(time_buf));
+                        snprintf(m, sizeof(m), "🎬 <b>BẮT ĐẦU: %s</b>\n📌 [#%lu] %s\n⏰ Bắt đầu lúc: %s", 
+                                 ev.type, (unsigned long)ev.id, ev.title, time_buf);
+                        
+                        if (telegram_bot_send_default(m) == ESP_OK) {
+                            display_show_alert(ev.id, ev.title, "Started!", 0);
+                            
+                            // Đánh dấu đã nhắc bằng cách thêm tag vào cuối notes
+                            if (strlen(ev.notes) + 5 < sizeof(ev.notes)) {
+                                strcat(ev.notes, " [S]");
+                                task_database_update(&ev);
+                            }
+                        }
                     }
                 }
                 vTaskDelay(pdMS_TO_TICKS(1000));

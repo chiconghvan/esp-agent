@@ -290,7 +290,7 @@ static void draw_header(void)
     int asc_label = u8g2_GetAscent(&u8g2);
     // Tính Y để căn giữa: (BarHeight - FontHeight)/2 + Ascent
     int y_label = (DISP_HEADER_HEIGHT - asc_label) / 2 + asc_label;
-    u8g2_DrawStr(&u8g2, 2, y_label, s_view_mode == VIEW_MODE_DEADLINE ? "Deadline" : "Today");
+    u8g2_DrawStr(&u8g2, 2, y_label, s_view_mode == VIEW_MODE_DEADLINE ? "DEADLINE" : "TODAY");
 
     // 2. Vẽ Đồng hồ
     u8g2_SetFont(&u8g2, DISP_FONT_HEADER_TIME);
@@ -303,16 +303,16 @@ static void draw_header(void)
     snprintf(time_str, sizeof(time_str), "%02d:%02d", ti.tm_hour, ti.tm_min);
     u8g2_DrawStr(&u8g2, 68, y_time, time_str);
 
-    // 3. Vẽ Wi-Fi: 3 cột, rộng 3px, cách nhau 1px. Cao: 4px, 7px, 10px.
-    // Căn giữa icon 10px vào Bar
+    // 3. Vẽ Wi-Fi: Aligned to have 1px gap from bottom like text
     int wifi_x_base = 115;
-    int wifi_y_top = (DISP_HEADER_HEIGHT - 10) / 2;
-    if (wifi_y_top < 0) wifi_y_top = 0;
+    // Calculation: Bottom edge = DISP_HEADER_HEIGHT - 2 (for 1px gap from row 9)
+    // Icon height is 10. So wifi_y_top + 9 = DISP_HEADER_HEIGHT - 2.
+    int wifi_y_top = DISP_HEADER_HEIGHT - 11; 
+    if (wifi_y_top < -1) wifi_y_top = -1; // Clamp to avoid excessive cut
 
-    int h_levels[] = {3, 6, 9};
+    int h_levels[] = {4, 6, 8};
     for(int i=0; i < s_wifi_level && i < 3; i++) {
         int h = h_levels[i];
-        // Vẽ từ dưới lên: lấy đáy icon làm chuẩn
         u8g2_DrawBox(&u8g2, wifi_x_base + (i*4), wifi_y_top + (10 - h), 3, h);
     }
     

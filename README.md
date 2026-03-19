@@ -1,10 +1,21 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh 4.2.0
+# ESP-Agent: Trợ lý nhắc việc thông minh 4.3.0
 
 > Firmware ESP-IDF cho ESP32-C3 Super Mini — Quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED U8g2 Premium + Firebase Cloud Sync.
 
 ---
 
-## 📋 Tính năng mới (v4.2.0)
+## 📋 Tính năng mới (v4.3.0)
+
+- **Tối ưu hóa Font & Bộ nhớ**:
+    - **Font Subsetting**: Thu nhỏ dung lượng firmware bằng cách chỉ trích xuất các ký tự Tiếng Việt, số và ký tự đặc biệt cần thiết từ font Iosevka.
+    - **Memory Excellence**: Cải thiện độ ổn định khi vẽ các thành phần đồ họa phức tạp trên RAM hạn chế của ESP32-C3.
+- **Nâng cấp trải nghiệm khởi động (Boot Experience)**:
+    - **Real-time Progress**: Thanh tiến trình khởi động chính xác tuyệt đối, đồng bộ với từng bước khởi tạo hệ thống.
+    - **Vietnamese Status Labels**: Hiển thị trạng thái chi tiết bằng tiếng Việt trong suốt quá trình boot (Kết nối WiFi, Đồng bộ Cloud, Khởi tạo AI...).
+- **Cải tiến Reminder & Sync**:
+    - Tối ưu hóa logic kiểm tra nhắc nhở và đồng bộ hóa ngầm để tránh xung đột tài nguyên mạng.
+
+## 📋 Tính năng nổi bật (v4.2.0)
 
 - **Cơ chế Network Gatekeeper (Mutex)**:
     - **Tuần tự hóa (Serialization)**: Sử dụng Mutex để xếp hàng (queue up) tất cả các yêu cầu HTTPS (SSL).
@@ -93,6 +104,6 @@ idf.py flash monitor
 ## 📝 Giấy phép & Tác giả
 Dự án được phát hành dưới giấy phép **MIT**.
 
-**Phiên bản:** 4.2.0  
+**Phiên bản:** 4.3.0  
 **Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-17 (Network Gatekeeper, Double-click OLED & ID selection listening)
+**Cập nhật cuối:** 2026-03-19 (Font Optimization, Precise Boot Progress & Reminder improvements)
