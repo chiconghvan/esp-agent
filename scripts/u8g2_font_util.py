@@ -4,12 +4,17 @@ import subprocess
 import urllib.request
 import math
 import re
+import platform
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 # --- Settings ---
+# BDFCONV is the tool translated BDF font to U8g2-compatible .c file
+# For Windows, we use the .exe from the official repo.
+# For macOS, you should compile it from u8g2/tools/font/bdfconv source.
+IS_WINDOWS = platform.system() == "Windows"
+BDFCONV_EXE = os.path.join("scripts", "bdfconv.exe" if IS_WINDOWS else "bdfconv")
 BDFCONV_URL = "https://github.com/olikraus/u8g2/raw/master/tools/font/bdfconv/bdfconv.exe"
-BDFCONV_EXE = os.path.join("scripts", "bdfconv.exe")
 # Dải mã Tiếng Việt tối ưu (ASCII, các nguyên âm có dấu Latin-1, Ext-A/B, và Ext-Additional)
 # Rút gọn từ ~617 xuống ~251 ký tự để tiết kiệm bộ nhớ flash
 VN_MAP = "32-126,160,192-218,224-250,258-259,272-273,296-297,360-361,416-417,431-432,7840-7929"
@@ -30,10 +35,17 @@ def get_codepoints_from_map(vn_map):
     return sorted(list(set(points)))
 
 def download_bdfconv():
+    """Downloads bdfconv.exe if missing (only for Windows)."""
     if not os.path.exists(BDFCONV_EXE):
-        print("[*] Downloading bdfconv.exe...")
-        os.makedirs("scripts", exist_ok=True)
-        urllib.request.urlretrieve(BDFCONV_URL, BDFCONV_EXE)
+        if IS_WINDOWS:
+            print("[*] Downloading bdfconv.exe (Windows)...")
+            os.makedirs("scripts", exist_ok=True)
+            urllib.request.urlretrieve(BDFCONV_URL, BDFCONV_EXE)
+        else:
+            print(f"[!] Error: '{BDFCONV_EXE}' not found.")
+            print("Please ensure 'scripts/bdfconv' is compiled for macOS.")
+            print("Run: gcc -o scripts/bdfconv scripts/bdfconv_src/*.c")
+            sys.exit(1)
 
 def generate_bdf_from_ttf(ttf_path, font_size, output_bdf):
     """
@@ -301,9 +313,9 @@ if __name__ == "__main__":
     bdf_file = f"{base_name}.bdf"
     generate_bdf_from_ttf(input_ttf, f_size, bdf_file)
     
-    # 2. Call bdfconv.exe
+    # 2. Call bdfconv
     c_file = f"u8g2_font_{base_name}.c"
-    print(f"[*] Compressing BDF for U8g2 using bdfconv.exe...")
+    print(f"[*] Compressing BDF for U8g2 using {os.path.basename(BDFCONV_EXE)}...")
     cmd = [
         BDFCONV_EXE, "-v", bdf_file, "-b", "0", "-f", "1", 
         "-m", VN_MAP, "-n", f"u8g2_font_{base_name}", "-o", c_file

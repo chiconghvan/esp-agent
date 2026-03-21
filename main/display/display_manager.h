@@ -18,7 +18,7 @@
  * @param sda_gpio Chân SDA
  * @param scl_gpio Chân SCL
  */
-esp_err_t display_init(int sda_gpio, int scl_gpio);
+esp_err_t display_init(void);
 
 /**
  * @brief Cập nhật boot progress (0-100)

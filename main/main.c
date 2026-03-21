@@ -272,9 +272,9 @@ void app_main(void)
     print_banner();
     network_gatekeeper_init();
 
-    /* Khởi tạo màn hình OLED (sớm nhất để show boot progress) */
-    if (display_init(DISPLAY_SDA_GPIO, DISPLAY_SCL_GPIO) != ESP_OK) {
-        ESP_LOGW(TAG, "OLED init thất bại, tiếp tục không màn hình");
+    /* Khởi tạo màn hình LCD SPI (sớm nhất để show boot progress) */
+    if (display_init() != ESP_OK) {
+        ESP_LOGW(TAG, "Display init thất bại, tiếp tục không màn hình");
     }
     display_boot_progress(0, "Starting...");
 

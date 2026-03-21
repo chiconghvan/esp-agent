@@ -28,6 +28,7 @@
 
 // static const char *TAG = "display"; // Unused
 static u8g2_t u8g2;
+
 static SemaphoreHandle_t s_display_mutex = NULL;
 
 /* ──── Screen states ──── */
@@ -85,7 +86,7 @@ static void button_init(void)
     gpio_isr_handler_add(BOOT_BTN_GPIO, btn_isr, NULL);
 }
 
-esp_err_t display_init(int sda_gpio, int scl_gpio)
+esp_err_t display_init(void)
 {
     // Khởi tạo Mutex trước khi dùng
     if (s_display_mutex == NULL) {
@@ -93,20 +94,32 @@ esp_err_t display_init(int sda_gpio, int scl_gpio)
     }
     
     xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+    
     u8g2_esp32_hal_t hal = U8G2_ESP32_HAL_DEFAULT;
-    hal.bus.i2c.sda = sda_gpio;
-    hal.bus.i2c.scl = scl_gpio;
+    hal.bus.spi.clk = DISPLAY_SPI_SCK_GPIO;
+    hal.bus.spi.mosi = DISPLAY_SPI_MOSI_GPIO;
+    hal.bus.spi.cs = DISPLAY_SPI_CS_GPIO;
+    hal.dc = DISPLAY_SPI_DC_GPIO;
+    hal.reset = DISPLAY_SPI_RST_GPIO;
     u8g2_esp32_hal_init(hal);
 
-    u8g2_Setup_ssd1306_i2c_128x64_noname_f(
+    u8g2_Setup_st7565_erc12864_f(
         &u8g2, U8G2_R0, 
-        u8g2_esp32_i2c_byte_cb, 
+        u8g2_esp32_spi_byte_cb, 
         u8g2_esp32_gpio_and_delay_cb
     );
 
     u8g2_InitDisplay(&u8g2);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    
+    u8g2_SetContrast(&u8g2, 0x00); // Contrast value (Optimized for white-on-black)
+    
     u8g2_SetPowerSave(&u8g2, 0);
     u8g2_ClearBuffer(&u8g2);
+
+
+
+    
     xSemaphoreGive(s_display_mutex);
     
     button_init();
@@ -373,8 +386,9 @@ static void draw_dots(int cur, int total)
     if (total <= 1) return;
     int sx = (128 - (total - 1) * 8) / 2;
     for (int i = 0; i < total; i++) {
-        if (i == cur) u8g2_DrawDisc(&u8g2, sx + i * 8, 62, 1, U8G2_DRAW_ALL);
-        else u8g2_DrawPixel(&u8g2, sx + i * 8, 62);
+        int x = sx + i * 8;
+        if (i == cur) u8g2_DrawBox(&u8g2, x, 61, 3, 3); // Square 2x2 for active
+        else u8g2_DrawPixel(&u8g2, x, 62);
     }
 }
 
@@ -483,6 +497,7 @@ void display_show_result(const char *action, uint32_t task_id, const char *title
         draw_utf8_custom(2, y1, title);
     }
     u8g2_SendBuffer(&u8g2);
+    
     xSemaphoreGive(s_display_mutex);
     s_state = SCREEN_RESULT;
     s_state_start = xTaskGetTickCount();
@@ -523,6 +538,7 @@ void display_show_alert(uint32_t task_id, const char *title, const char *due_str
     draw_utf8_custom(2, y2, status);
 
     u8g2_SendBuffer(&u8g2);
+    
     xSemaphoreGive(s_display_mutex);
 
     s_state = SCREEN_ALERT;
