@@ -1,0 +1,25 @@
+/**
+ * @file api.h.sample
+ * @brief Mẫu cấu hình API Key
+ * Hãy copy file này thành api.h và điền key của bạn.
+ */
+
+#ifndef API_H
+#define API_H
+
+/** Token của Telegram Bot (lấy từ @BotFather) */
+#define TELEGRAM_BOT_TOKEN       "YOUR_TELEGRAM_BOT_TOKEN"
+
+/** Chat ID của người dùng (lấy từ @userinfobot) */
+#define TELEGRAM_CHAT_ID         "YOUR_TELEGRAM_CHAT_ID"
+
+/** API Key của OpenAI */
+#define OPENAI_API_KEY           "YOUR_OPENAI_API_KEY"
+
+/** Firebase Auth Key */
+#define FIREBASE_AUTH            "YOUR_FIREBASE_AUTH_KEY"
+
+/** Firebase Host */
+#define FIREBASE_HOST            "YOUR_FIREBASE_HOST"
+
+#endif /* API_H */

@@ -1,6 +1,8 @@
 # ESP-IDF specific
 build/
-main/config.h
+main/api.h
+# main/config.h - Now tracked by git
+
 managed_components/
 sdkconfig
 sdkconfig.old
