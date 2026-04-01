@@ -1,78 +1,72 @@
-# ESP-Agent: Trợ lý nhắc việc thông minh 4.3.0
+# ESP-Agent: Trợ lý nhắc việc thông minh v4.4.1
 
-> Firmware ESP-IDF cho ESP32-C3 Super Mini — Quản lý công việc qua Telegram Bot + OpenAI LLM + Màn hình OLED U8g2 Premium + Firebase Cloud Sync.
-
----
-
-## 📋 Tính năng mới (v4.3.0)
-
-- **Tối ưu hóa Font & Bộ nhớ**:
-    - **Font Subsetting**: Thu nhỏ dung lượng firmware bằng cách chỉ trích xuất các ký tự Tiếng Việt, số và ký tự đặc biệt cần thiết từ font Iosevka.
-    - **Memory Excellence**: Cải thiện độ ổn định khi vẽ các thành phần đồ họa phức tạp trên RAM hạn chế của ESP32-C3.
-- **Nâng cấp trải nghiệm khởi động (Boot Experience)**:
-    - **Real-time Progress**: Thanh tiến trình khởi động chính xác tuyệt đối, đồng bộ với từng bước khởi tạo hệ thống.
-    - **Vietnamese Status Labels**: Hiển thị trạng thái chi tiết bằng tiếng Việt trong suốt quá trình boot (Kết nối WiFi, Đồng bộ Cloud, Khởi tạo AI...).
-- **Cải tiến Reminder & Sync**:
-    - Tối ưu hóa logic kiểm tra nhắc nhở và đồng bộ hóa ngầm để tránh xung đột tài nguyên mạng.
-
-## 📋 Tính năng nổi bật (v4.2.0)
-
-- **Cơ chế Network Gatekeeper (Mutex)**:
-    - **Tuần tự hóa (Serialization)**: Sử dụng Mutex để xếp hàng (queue up) tất cả các yêu cầu HTTPS (SSL).
-    - **Chống tràn RAM**: Loại bỏ hoàn toàn lỗi `ESP_ERR_NO_MEM` do Handshake SSL chồng chéo khi đồng bộ Firebase và xử lý hội thoại AI cùng lúc.
-- **Tương tác OLED nâng cao**:
-    - **Double-click Interaction**: Nhấn đúp nút BOOT để chuyển đổi nhanh giữa chế độ xem **Deadline** (3 ngày tới) và **Today** (chỉ hôm nay).
-    - **Optimized Startup**: Thanh tiến trình khởi động đồng bộ hóa thời gian thực với các bước Initialization kèm nhãn tiếng Việt.
-- **Xử lý ý định thông minh (Ambiguity Resolver)**:
-    - **ID Listening**: Tự động gợi ý và lắng nghe ID từ người dùng khi tìm kiếm Semantic trả về nhiều kết quả tương đồng.
-    - **Smart Extraction**: Thuật toán tự bóc tách số ID từ ngôn ngữ tự nhiên (Vd: "số 1", "task 2 và 3", "chọn cái #5").
-    - **Hợp nhất dữ liệu (Data Merging)**: Tự động bảo lưu thông tin thay đổi (update fields) khi người dùng chọn ID từ danh sách gợi ý.
-- **Đồng bộ Data Usage**: Lưu và đồng bộ hạn mức sử dụng API lên Firebase Cloud, không bị mất dữ liệu khi nạp lại firmware.
-
-## 📋 Tính năng nổi bật (v4.1.0)
-
-## 📋 Tính năng nổi bật (v4.0.0)
-
-- **U8g2 Graphics Engine**: Chuyển đổi toàn bộ hệ thống hiển thị sang thư viện U8g2, hỗ trợ hàng ngàn font chữ chất lượng cao và khả năng đồ họa mượt mà.
-- **Dynamic Layout Engine**: Tự động tính toán tọa độ hiển thị dựa trên thông số (Ascent/Descent) của font chữ. Thay đổi font mà không bao giờ lo bị lệch dòng hay đè chữ.
-- **Tối ưu hiển thị Tiêu đề**:
-    - **Smart Wrapping**: Ngắt dòng thông minh tại dấu cách hoặc dấu câu để tận dụng tối đa chiều ngang.
-    - **Pixel Ellipsis**: Sử dụng 3 điểm ảnh (1x1px) vẽ thủ công cực kỳ tinh tế thay cho dấu `...` thô kệch của font.
-- **AI Intent Parsing**: Sử dụng `gpt-4o-mini` với kiến trúc 2 bước giúp phân loại ý định cực nhanh và trích xuất chi tiết cực kỳ chính xác.
-- **Đồng bộ thời gian thông minh**: Lấy giờ chuẩn từ Telegram API Header, đảm bảo thiết bị luôn chạy đúng giờ ngay cả khi SNTP gặp sự cố.
-- **Micro-Optimization RAM**: Hệ thống quản lý bộ nhớ động giúp firmware chạy cực kỳ ổn định trên ESP32-C3 chỉ với ~320KB RAM.
-- **Captive Portal WiFi Setup**: Tự động phát Wifi AP để cấu hình mạng qua điện thoại cực kỳ tiện lợi.
+> Firmware tối ưu cho **ESP32-C3 Super Mini** (RISC-V) — Tích hợp **Telegram Bot**, **OpenAI LLM**, màn hình **LCD ST7565R (SPI)** và **Firebase Cloud Sync**.
 
 ---
 
-## 🔧 Phân bổ phần cứng
+## 📋 Tính năng nổi bật (v4.4.x)
 
-### 1. Linh kiện
-- **MCU**: ESP32-C3 Super Mini (RISC-V).
-- **Display**: OLED 0.96 inch (SSD1306 qua U8g2 HAL).
-- **Communication**: WiFi 2.4GHz.
+- **Màn hình LCD ST7565R SPI (Mới)**:
+    - **Tốc độ phản hồi cao**: Chuyển đổi từ I2C SSD1306 sang giao thức SPI nhanh và ổn định hơn.
+    - **Hiển thị linh hoạt**: Hỗ trợ đầy đủ thư viện `u8g2`, tối ưu cho các module như GMG12864-06D.
+    - **Page Indicator**: Chỉ báo trang phong cách 3x3 pixel hiện đại, trực quan.
+- **AI Intent Parsing & Semantic Search**:
+    - **GPT-4o-mini Integration**: Phân loại ý định người dùng (Intent) và bóc tách thông tin (Entities) cực kỳ chính xác.
+    - **Hybrid Search**: Tìm kiếm kết hợp giữa từ khóa (Lexical) và ý nghĩa (Semantic Vector) với ngưỡng tương đồng (Similarity) tùy chỉnh.
+- **Hệ thống Quản lý Bộ nhớ "Extreme"**:
+    - **Network Gatekeeper (Mutex)**: Tuần tự hóa các yêu cầu HTTPS để tránh lỗi `ESP_ERR_NO_MEM` trên RAM hạn chế (400KB) của ESP32-C3.
+    - **Font Subsetting**: Chỉ nạp các ký tự Tiếng Việt cần thiết từ font Iosevka để tiết kiệm dung lượng Flash.
+- **Trải nghiệm khởi động (Boot Experience)**:
+    - **Real-time Progress Bar**: Thanh tiến trình đồng bộ chính xác với quá trình khởi tạo (WiFi -> Time -> Cloud -> AI).
+    - **Vietnamese Status**: Hiển thị trạng thái chi tiết bằng tiếng Việt trong suốt quá trình boot.
+- **Đồng bộ hóa & Nhắc nhở**:
+    - **Firebase Cloud Sync**: Tự động đồng bộ task, cấu hình và dung lượng API sử dụng.
+    - **Intelligent Reminder**: Kiểm tra và thông báo task sắp đến hạn theo thời gian thực.
 
-### 2. Sơ đồ nối dây (Wiring)
+---
 
-| OLED Pin | ESP32-C3 Pin | Chức năng |
-|----------|--------------|-----------|
-| **VCC**  | 3V3          | Nguồn |
-| **GND**  | GND          | Đất |
-| **SDA**  | **GPIO 6**   | I2C Data |
-| **SCL**  | **GPIO 7**   | I2C Clock |
+## 🔧 Phân bổ phần cứng (Hardware Allocation)
+
+### 1. Thành phần chính
+- **MCU**: ESP32-C3 Super Mini.
+- **Display**: LCD ST7565R Monochrome (SPI) — Độ phân giải 128x64.
+- **LED**: System Status LED (GPIO 8).
+
+### 2. Sơ đồ nối dây (Wiring Diagram)
+
+Dưới đây là sơ đồ kết nối chuẩn đã được kiểm kê và ổn định trên board ESP32-C3 Super Mini:
+
+| LCD ST7565R Pin | ESP32-C3 Pin | GPIO | Chức năng |
+| :--- | :--- | :--- | :--- |
+| **VCC** | 3.3V | - | Nguồn cấp (3.3V) |
+| **GND** | GND | - | Đất |
+| **SCK / SCL** | **GPIO 0** | 0 | SPI Clock |
+| **SDA / MOSI** | **GPIO 1** | 1 | SPI Master Out Slave In |
+| **CS / Chip Select** | **GPIO 10** | 10 | Chip Select (Kênh an toàn) |
+| **RS / DC** | **GPIO 2** | 2 | Register Select / Data Command |
+| **RST / Reset** | **GPIO 3** | 3 | Hardware Reset |
+| **LEDA (Backlight)** | 3.3V | - | Đèn nền (Nối 3.3V hoặc qua trở) |
+
+> [!IMPORTANT]
+> **System LED**: GPIO 8 (Active Low) là đèn LED mặc định trên board ESP32-C3 Super Mini, dùng để chỉ báo trạng thái hệ thống.
 
 ---
 
 ## ⚙️ Cài đặt & Flash Firmware
 
-### Bước 1: Cấu hình hệ thống
-1. Sao chép `main/config.h.example` thành `main/config.h`.
-2. Điền API Keys của OpenAI, Telegram, Firebase.
-3. Tinh chỉnh giao diện trong `main/display/display_config.h` (Fonts, Margins, Spacings).
+### Bước 1: Cấu hình thông tin nhạy cảm
+1. Sao chép `main/api.h.sample` thành `main/api.h`.
+2. Điền các khóa API (Telegram Token, Chat ID, OpenAI Key, Firebase Host/Auth).
+3. Đảm bảo `api.h` đã được thêm vào `.gitignore` để bảo mật.
 
 ### Bước 2: Build & Flash
+Sử dụng **ESP-IDF v5.1** hoặc mới hơn để có kết quả tốt nhất.
+
 ```bash
-# Sử dụng ESP-IDF v5.x
+# Cài đặt môi trường (nếu chưa)
+. $HOME/export.sh
+
+# Thực hiện build và nạp
 idf.py build
 idf.py flash monitor
 ```
@@ -81,29 +75,44 @@ idf.py flash monitor
 
 ## 🚀 Hướng dẫn sử dụng
 
-### 1. Qua Telegram
-- **Thêm task**: "Nhắc tôi họp báo lúc 2h chiều nay"
-- **Hoàn thành**: "Xong việc báo cáo rồi" -> Hệ thống tự dời hạn nếu là task lặp lại.
-- **Tìm kiếm**: "Tháng này có lịch nào quan trọng không?"
-- **Hoàn tác**: Sử dụng nút **[Undo]** ngay trên tin nhắn phản hồi.
+### 1. Tương tác qua Telegram
+- **Thêm việc**: *"Nhắc tôi mang Laptop đi sửa lúc 14h ngày mai"*
+- **Xóa/Sửa**: Gửi tên task hoặc ID cụ thể. Hệ thống sẽ gợi ý nếu ý định không rõ ràng.
+- **Tìm kiếm**: *"Tuần sau có việc gì quan trọng không?"*
+- **Thống kê**: *"Hôm nay tôi đã dùng bao nhiêu tiền OpenAI?"*
 
-### 2. Qua thiết bị (OLED)
-- **Màn hình Carousel**: Tự động cuộn qua các task trong 3 ngày tới.
-- **Nút vật lý (BOOT)**: Nhấn để chuyển trang thủ công, Giữ 5 giây để Reset WiFi.
-
----
-
-## 📁 Cấu trúc thư mục
-- `main/actions/`: Dispatcher và logic xử lý AI.
-- `main/display/`: Quản lý U8g2, cấu hình font và engine vẽ custom.
-- `main/database/`: SPIFFS CRUD & Vector Hybrid Search (Lexical + Semantic).
-- `main/utils/`: Time utils, Formatter và Web Log Server.
+### 2. Tương tác trên thiết bị (Display UI)
+- **Màn hình Carousel**: Tự động hiển thị các task sắp đến hạn (theo chu kỳ 5s).
+- **Phím cuộn (BOOT button)**: 
+    - Nhấn 1 lần: Chuyển sang trang tiếp theo.
+    - Nhấn đúp: Chuyển đổi giữa chế độ xem **Hôm nay** và **Sắp tới**.
+    - Giữ 5 giây: Reset cấu hình WiFi (Phát Captive Portal).
 
 ---
 
-## 📝 Giấy phép & Tác giả
+## 📂 Cấu trúc thư mục
+
+```text
+├── components/          # HAL cho U8g2 và các thư viện bên thứ 3
+├── main/
+│   ├── actions/         # Logic xử lý Intent và thực thi lệnh AI
+│   ├── cloud/           # Firebase Sync Client
+│   ├── database/        # Quản lý SPIFFS & Vector Search
+│   ├── display/         # UI Engine, Layout & Font Management
+│   ├── openai/          # OpenAI API Client (Embedding & Chat)
+│   ├── telegram/        # Telegram Bot Client & Polling
+│   ├── utils/           # Time, String, Memory helpers
+│   ├── config.h         # Cấu hình tham số hệ thống
+│   └── api.h            # Cấu hình API Keys (Bảo mật)
+└── spiffs_data/         # Dữ liệu tĩnh sẽ flash vào SPIFFS
+```
+
+---
+
+## 📜 Giấy phép & Tác giả
+
 Dự án được phát hành dưới giấy phép **MIT**.
 
-**Phiên bản:** 4.3.0  
-**Tác giả:** chiconghvan  
-**Cập nhật cuối:** 2026-03-19 (Font Optimization, Precise Boot Progress & Reminder improvements)
+- **Phiên bản:** 4.4.1
+- **Tác giả:** chiconghvan
+- **Cập nhật cuối:** 2026-03-31 (Migrated to ST7565R SPI LCD & Detailed Wiring Update)

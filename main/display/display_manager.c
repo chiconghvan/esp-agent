@@ -25,6 +25,7 @@
 #include "nvs.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 // static const char *TAG = "display"; // Unused
 static u8g2_t u8g2;
@@ -67,6 +68,22 @@ typedef enum {
     VIEW_MODE_TODAY
 } carousel_view_mode_t;
 static carousel_view_mode_t s_view_mode = VIEW_MODE_DEADLINE;
+
+/* ==========================================================================
+ * Helper: Sorting
+ * ========================================================================== */
+static int compare_tasks_by_time(const void *a, const void *b)
+{
+    const task_record_t *ta = (const task_record_t *)a;
+    const task_record_t *tb = (const task_record_t *)b;
+    
+    time_t t_a = (ta->due_time > 0) ? ta->due_time : ta->start_time;
+    time_t t_b = (tb->due_time > 0) ? tb->due_time : tb->start_time;
+
+    if (t_a < t_b) return -1;
+    if (t_a > t_b) return 1;
+    return 0;
+}
 
 /* ==========================================================================
  * Button & Init
@@ -407,6 +424,10 @@ static void refresh_idle_data(void)
 
     if (task_database_query_by_time(today_start, dl_end, NULL, "pending",
                                     tasks, MAX_DL_TASKS, &count) == ESP_OK && count > 0) {
+        
+        // Sắp xếp các task theo thời gian (gần nhất -> xa nhất)
+        qsort(tasks, count, sizeof(task_record_t), compare_tasks_by_time);
+
         s_dl_count = count;
         for (int i = 0; i < count; i++) {
             snprintf(s_items[i].id_str, sizeof(s_items[i].id_str), "#%lu", (unsigned long)tasks[i].id);

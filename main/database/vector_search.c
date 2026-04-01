@@ -308,7 +308,7 @@ esp_err_t vector_search_audit_and_rebuild(void)
     }
 
     if (total_missing == 0) {
-        display_boot_progress(90, "AI Embeddings: OK");
+        display_boot_progress(85, "AI Embeddings: OK");
         ESP_LOGI(TAG, "Audit xong: Tất cả embeddings đã đầy đủ.");
         return ESP_OK;
     }
@@ -328,7 +328,7 @@ esp_err_t vector_search_audit_and_rebuild(void)
             task_record_t task;
             if (task_database_read(task_id, &task) == ESP_OK) {
                 snprintf(oled_msg, sizeof(oled_msg), "Rebuilt Embeding %d/%d", rebuilt_count + 1, total_missing);
-                display_boot_progress(85, oled_msg);
+                display_boot_progress(70 + (float)rebuilt_count / total_missing * 10, oled_msg);
                 
                 ESP_LOGI(TAG, "Đang tạo lại embedding cho task #%" PRIu32 ": %s", task_id, task.title);
                 
@@ -349,7 +349,7 @@ esp_err_t vector_search_audit_and_rebuild(void)
         }
     }
 
-    display_boot_progress(90, "AI Rebuilt Done.");
+    display_boot_progress(85, "AI Rebuilt Done.");
     ESP_LOGI(TAG, "Audit xong: Đã tạo lại %d/%d embedding.", rebuilt_count, total_missing);
     return ESP_OK;
 }

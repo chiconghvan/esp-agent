@@ -147,11 +147,11 @@
 /* ===========================================================================
  * Display ST7565R SPI Configuration (LCD mới)
  * =========================================================================== */
-#define DISPLAY_SPI_SCK_GPIO    0
-#define DISPLAY_SPI_MOSI_GPIO   1
-#define DISPLAY_SPI_CS_GPIO     10  // Switched to GPIO 10 for absolute safety
-#define DISPLAY_SPI_DC_GPIO     2
-#define DISPLAY_SPI_RST_GPIO    3
+#define DISPLAY_SPI_SCK_GPIO    1
+#define DISPLAY_SPI_MOSI_GPIO   2
+#define DISPLAY_SPI_CS_GPIO     10  // Already 10
+#define DISPLAY_SPI_DC_GPIO     7
+#define DISPLAY_SPI_RST_GPIO    6
 
 
 

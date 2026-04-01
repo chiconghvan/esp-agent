@@ -137,6 +137,7 @@ static void reminder_task(void *arg)
         /* === Phần 5: Daily Briefing lúc 8:00 sáng === */
         static int s_last_briefing_yday = -1;
         if (tm_n.tm_hour == 8 && tm_n.tm_min <= 2 && s_last_briefing_yday != tm_n.tm_yday) {
+            task_database_update_overdue(); // Cập nhật trạng thái trước khi gửi briefing
             time_range_t today = time_utils_get_today_range();
             
             char brief[RESPONSE_BUFFER_SIZE];
@@ -148,20 +149,24 @@ static void reminder_task(void *arg)
                 const task_index_entry_t *e = &idx->entries[i];
                 if (strcmp(e->status, "pending") != 0 && strcmp(e->status, "overdue") != 0) continue;
 
-                bool active_today = false;
-                // 1. Task đến hạn hôm nay
-                if (e->due_time >= today.start && e->due_time <= today.end) active_today = true;
-                // 2. Task bắt đầu hôm nay
-                else if (e->start_time >= today.start && e->start_time <= today.end) active_today = true;
-                // 3. Task đang diễn ra (bắt đầu trước, kết thúc sau)
-                else if (e->start_time > 0 && e->start_time < today.start && e->due_time > today.end) active_today = true;
+                bool include_task = false;
+                // 1. Task quá hạn
+                if (strcmp(e->status, "overdue") == 0) include_task = true;
+                // 2. Task đến hạn hôm nay
+                else if (e->due_time >= today.start && e->due_time <= today.end) include_task = true;
+                // 3. Task bắt đầu hôm nay
+                else if (e->start_time >= today.start && e->start_time <= today.end) include_task = true;
+                // 4. Task đang diễn ra (bắt đầu trước, kết thúc sau)
+                else if (e->start_time > 0 && e->start_time < today.start && e->due_time > today.end) include_task = true;
 
-                if (active_today) {
+                if (include_task) {
                     task_record_t t;
                     if (task_database_read(e->id, &t) == ESP_OK) {
                         task_count++;
                         char time_info[64] = "";
-                        if (t.start_time > 0 && t.due_time > 0) {
+                        if (strcmp(t.status, "overdue") == 0) {
+                            snprintf(time_info, sizeof(time_info), " [⚠️ QUÁ HẠN]");
+                        } else if (t.start_time > 0 && t.due_time > 0) {
                             if (t.start_time < today.start) {
                                 int day = (int)((today.start - t.start_time) / 86400) + 1;
                                 int total = (int)((t.due_time - t.start_time) / 86400) + 1;

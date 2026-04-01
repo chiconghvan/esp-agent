@@ -506,13 +506,13 @@ esp_err_t wifi_manager_start_sntp(void)
         retry++;
         ESP_LOGI(TAG, "Đang chờ SNTP... %d/10", retry);
         snprintf(oled_msg, sizeof(oled_msg), "Dong bo SNTP %d/10", retry);
-        display_boot_progress(50, oled_msg);
+        display_boot_progress(15, oled_msg);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
     
     if (time(NULL) >= 1704067200) {
         ESP_LOGI(TAG, "Đồng bộ SNTP: OK");
-        display_boot_progress(58, "Dong bo Thoi gian: OK");
+        display_boot_progress(25, "Dong bo Thoi gian: OK");
         return ESP_OK;
     }
     

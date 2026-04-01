@@ -279,6 +279,7 @@ void app_main(void)
     display_boot_progress(0, "Starting...");
 
     /* Bước 1: Khởi tạo NVS */
+    display_boot_progress(5, "Khởi tạo NVS");
     ESP_ERROR_CHECK(init_nvs());
 
     /* Bước 2: Kết nối WiFi */
@@ -292,15 +293,15 @@ void app_main(void)
         esp_restart();
     }
 
-    /* Đồng bộ thời gian SNTP ngay sau khi có mạng (Hàm này tự cập nhật % nội bộ) */
+    /* Đồng bộ thời gian SNTP ngay sau khi có mạng (Hàm này chạy từ 15% -> 25%) */
     wifi_manager_start_sntp();
 
     /* Bước 3: Khởi tạo Database (SPIFFS) */
-    display_boot_progress(20, "Khởi tạo SPIFFS");
+    display_boot_progress(30, "Khởi tạo SPIFFS");
     ESP_LOGD(TAG, "Khởi tạo database...");
     err = task_database_init();
     if (err != ESP_OK) {
-        display_boot_progress(20, "SPIFFS Error!");
+        display_boot_progress(30, "SPIFFS Error!");
         ESP_LOGE(TAG, "Database thất bại! Khởi động lại...");
         vTaskDelay(pdMS_TO_TICKS(5000));
         esp_restart();
@@ -319,11 +320,11 @@ void app_main(void)
         /* PUSH ON BOOT */
         firebase_sync_upload_all();
     }
-    display_boot_progress(60, "Done Sync.");
+    display_boot_progress(65, "Done Sync.");
 #endif
 
 #if ENABLE_OPENAI_CLIENT
-    /* Kiểm tra và khôi phục Vector Embedding bị thiếu (Hàm này tự cập nhật % nội bộ) */
+    /* Kiểm tra và khôi phục Vector Embedding bị thiếu (Hàm này chạy từ 70% -> 85%) */
     vector_search_audit_and_rebuild();
 #endif
 
@@ -336,7 +337,7 @@ void app_main(void)
 
 #if ENABLE_TELEGRAM_BOT
     /* Bước 4: Khởi tạo Telegram Bot */
-    display_boot_progress(80, "Kết nối Telegram");
+    display_boot_progress(90, "Kết nối Telegram");
     err = telegram_bot_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Telegram Bot thất bại!");
