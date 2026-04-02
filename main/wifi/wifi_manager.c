@@ -533,3 +533,14 @@ int wifi_manager_get_level(void) {
     }
     return 0;
 }
+void wifi_manager_clear_config(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("wifi_cfg", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, "ssid");
+        nvs_erase_key(h, "pass");
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI(TAG, "Đã xoá cấu hình WiFi trong NVS.");
+    }
+}

@@ -47,4 +47,9 @@ bool wifi_manager_is_connected(void);
  */
 int wifi_manager_get_level(void);
 
+/**
+ * @brief Xoá cấu hình WiFi trong NVS
+ */
+void wifi_manager_clear_config(void);
+
 #endif /* WIFI_MANAGER_H */

@@ -219,6 +219,8 @@ static const char *PROMPT_B2_MUTATE =
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
     "Trả JSON:\n"
+    "{\n"
+    "  \"task_ids\": [number],\n"
     "  \"search_query\": \"string nếu không có ID cụ thể\",\n"
     "  \"filters\": [\n"
     "    {\"field\": \"status\", \"op\": \"in|equals\", \"value\": [\"pending\",\"done\",\"overdue\",\"cancelled\"]},\n"
@@ -589,6 +591,35 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     if (strcmp(user_message, "/confirm") == 0) {
         ESP_LOGI(TAG, "Quick command: /confirm hard delete");
         return action_delete_confirm_hard(response_buffer, buffer_size);
+    }
+
+    if (strncmp(user_message, "/done", 5) == 0) {
+        ESP_LOGI(TAG, "Quick command: /done");
+        uint32_t ids[20];
+        int count = 0;
+        const char *p = user_message + 5;
+        while (*p && count < 20) {
+            if (*p >= '0' && *p <= '9') {
+                char *end;
+                ids[count++] = strtoul(p, &end, 10);
+                p = end;
+            } else {
+                p++;
+            }
+        }
+        if (count > 0) {
+            cJSON *root = cJSON_CreateObject();
+            cJSON *arr = cJSON_CreateArray();
+            for (int i = 0; i < count; i++) cJSON_AddItemToArray(arr, cJSON_CreateNumber(ids[i]));
+            cJSON_AddItemToObject(root, "task_ids", arr);
+            char *js = cJSON_PrintUnformatted(root);
+            esp_err_t res = action_complete_task(js, response_buffer, buffer_size);
+            free(js);
+            cJSON_Delete(root);
+            return res;
+        }
+        snprintf(response_buffer, buffer_size, "⚠️ Vui lòng nhập ID sau lệnh /done. VD: /done 1, 2, 3");
+        return ESP_OK;
     }
 
     /* ======= Xử lý ID Selection (phản hồi cho Ambiguity) ======= */

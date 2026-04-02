@@ -132,6 +132,16 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
 
         if (old_tasks && old_tasks_count > 0) {
             action_undo_save(UNDO_COMPLETE, old_tasks, old_tasks_count);
+            
+            /* Hiển thị popup lên LCD */
+            if (completed_count == 1) {
+                display_show_result(old_tasks[0].repeat[0] != 'n' ? "Lap lai" : "Hoan thanh", 
+                                    old_tasks[0].id, old_tasks[0].title);
+            } else if (completed_count > 1) {
+                char msg[32];
+                snprintf(msg, sizeof(msg), "Xong %d task", completed_count);
+                display_show_result(msg, 0, "");
+            }
         }
         if (old_tasks) free(old_tasks);
 
@@ -141,6 +151,8 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
             if (written < response_size) {
                 snprintf(response + written, response_size - written, "\n\xF0\x9F\x8E\x89 Tốt lắm!");
             }
+            /* Cập nhật lại màn hình Idle để xóa task vừa xong */
+            display_show_idle();
         }
         dispatcher_set_context_tasks(NULL, 0);
         return ESP_OK;

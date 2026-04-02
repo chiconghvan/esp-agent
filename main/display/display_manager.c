@@ -22,6 +22,7 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "nvs.h"
 #include <stdio.h>
 #include <string.h>
@@ -91,16 +92,27 @@ static void IRAM_ATTR btn_isr(void *arg) { s_btn_pressed = true; }
 
 static void button_init(void)
 {
-    gpio_config_t cfg = {
-        .pin_bit_mask = (1ULL << SYSTEM_BUTTON_GPIO),
+    // 1. Khởi tạo Nút Cảm Ứng (Nav)
+    gpio_config_t cfg_touch = {
+        .pin_bit_mask = (1ULL << TOUCH_BUTTON_GPIO),
         .mode         = GPIO_MODE_INPUT,
-        .pull_up_en   = (SYSTEM_BUTTON_ACTIVE == 0) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
-        .pull_down_en = (SYSTEM_BUTTON_ACTIVE == 1) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
-        .intr_type    = (SYSTEM_BUTTON_ACTIVE == 0) ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE,
+        .pull_up_en   = (TOUCH_BUTTON_ACTIVE == 0) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
+        .pull_down_en = (TOUCH_BUTTON_ACTIVE == 1) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
+        .intr_type    = (TOUCH_BUTTON_ACTIVE == 0) ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE,
     };
-    gpio_config(&cfg);
+    gpio_config(&cfg_touch);
     gpio_install_isr_service(0);
-    gpio_isr_handler_add(SYSTEM_BUTTON_GPIO, btn_isr, NULL);
+    gpio_isr_handler_add(TOUCH_BUTTON_GPIO, btn_isr, NULL);
+
+    // 2. Khởi tạo Nút BOOT PCB (WiFi Reset) - Không dùng ngắt, dùng polling để check hold
+    gpio_config_t cfg_boot = {
+        .pin_bit_mask = (1ULL << BOOT_BUTTON_GPIO),
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = (BOOT_BUTTON_ACTIVE == 0) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
+        .pull_down_en = (BOOT_BUTTON_ACTIVE == 1) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE, 
+    };
+    gpio_config(&cfg_boot);
 }
 
 esp_err_t display_init(void)
@@ -591,32 +603,53 @@ static void display_task(void *arg)
         if (s_btn_pressed) {
             s_btn_pressed = false;
             vTaskDelay(pdMS_TO_TICKS(50)); // Debounce
-            if (gpio_get_level(SYSTEM_BUTTON_GPIO) == SYSTEM_BUTTON_ACTIVE) {
-                // Đã nhấn: Đợi thả nút lần 1
-                while (gpio_get_level(SYSTEM_BUTTON_GPIO) == SYSTEM_BUTTON_ACTIVE) vTaskDelay(pdMS_TO_TICKS(10));
+            if (gpio_get_level(TOUCH_BUTTON_GPIO) == TOUCH_BUTTON_ACTIVE) {
+                // Đã nhấn Touch: Đợi thả nút
+                while (gpio_get_level(TOUCH_BUTTON_GPIO) == TOUCH_BUTTON_ACTIVE) vTaskDelay(pdMS_TO_TICKS(10));
                 
-                // Đã thả: Đợi xem có nhấn lần 2 trong vòng 300ms không
                 bool double_click = false;
                 for (int i = 0; i < 30; i++) {
                     vTaskDelay(pdMS_TO_TICKS(10));
-                    if (gpio_get_level(SYSTEM_BUTTON_GPIO) == SYSTEM_BUTTON_ACTIVE) {
-                        double_click = true;
-                        break;
+                    if (gpio_get_level(TOUCH_BUTTON_GPIO) == TOUCH_BUTTON_ACTIVE) {
+                        double_click = true; break;
                     }
                 }
 
                 if (double_click) {
-                    // Double Click: Chuyển VIEW MODE
                     s_view_mode = (s_view_mode == VIEW_MODE_DEADLINE) ? VIEW_MODE_TODAY : VIEW_MODE_DEADLINE;
                     s_cur_idx = 0;
                     display_show_idle();
-                    // Đợi thả nút lần 2
-                    while (gpio_get_level(SYSTEM_BUTTON_GPIO) == SYSTEM_BUTTON_ACTIVE) vTaskDelay(pdMS_TO_TICKS(10));
+                    while (gpio_get_level(TOUCH_BUTTON_GPIO) == TOUCH_BUTTON_ACTIVE) vTaskDelay(pdMS_TO_TICKS(10));
                 } else {
-                    // Single Click: Next hoặc quay lại Idle
                     if (s_state == SCREEN_IDLE) slide_to_next();
                     else display_show_idle();
                 }
+            }
+        }
+
+        /* ──── Polling Nút BOOT cho Reset WiFi ──── */
+        if (gpio_get_level(BOOT_BUTTON_GPIO) == BOOT_BUTTON_ACTIVE) {
+            TickType_t start_hold = xTaskGetTickCount();
+            bool still_holding = true;
+            while (gpio_get_level(BOOT_BUTTON_GPIO) == BOOT_BUTTON_ACTIVE) {
+                uint32_t hold_ms = (xTaskGetTickCount() - start_hold) * portTICK_PERIOD_MS;
+                if (hold_ms >= 3000) { 
+                    /* HIỆU ỨNG RESET */
+                    xSemaphoreTake(s_display_mutex, portMAX_DELAY);
+                    u8g2_ClearBuffer(&u8g2);
+                    u8g2_SetDrawColor(&u8g2, 1);
+                    u8g2_DrawBox(&u8g2, 0, 0, 128, 64);
+                    u8g2_SetDrawColor(&u8g2, 0);
+                    u8g2_SetFont(&u8g2, DISP_FONT_HEADER_LABEL);
+                    draw_utf8_custom_centered(35, "RESET WIFI!");
+                    u8g2_SendBuffer(&u8g2);
+                    xSemaphoreGive(s_display_mutex);
+
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    wifi_manager_clear_config(); 
+                    esp_restart();
+                }
+                vTaskDelay(pdMS_TO_TICKS(50));
             }
         }
 

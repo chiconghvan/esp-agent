@@ -21,7 +21,7 @@
  * =========================================================================== */
 
 /** Phiên bản Firmware (dùng cho GitHub & Rollback) */
-#define FIRMWARE_VERSION         "5.1.0"
+#define FIRMWARE_VERSION         "5.1.1"
 
 /* ===========================================================================
  * WiFi Configuration (Mặc định nếu NVS trống, hoặc cấu hình qua Captive Portal)
@@ -145,10 +145,14 @@
 #define DISPLAY_SPI_RST_GPIO    6
 
 /* ===========================================================================
- * Input Configuration (Nút bấm cảm ứng)
+ * Input Configuration (Nút bấm)
  * =========================================================================== */
-#define SYSTEM_BUTTON_GPIO       3  // Chuyển từ GPIO 9 (BOOT) sang GPIO 3 (Touch)
-#define SYSTEM_BUTTON_ACTIVE     1  // Touch Button thường là Active High (1)
+#define TOUCH_BUTTON_GPIO        3  // Nút cảm ứng ngoài (Duyệt Task)
+#define TOUCH_BUTTON_ACTIVE      1  
+
+#define BOOT_BUTTON_GPIO         9  // Nút BOOT trên mạch (Reset WiFi)
+#define BOOT_BUTTON_ACTIVE       0  
+// Touch Button thường là Active High (1)
 
 
 
