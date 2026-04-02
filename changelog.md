@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.1.0] - 2026-04-02
+
+### Added
+- **Unified Query Engine**: Refactored filtering logic into a shared module (`query_engine.c`) for cross-action consistency.
+- **Enhanced Mutation Filtering**: Mutate actions (`DELETE_TASK`, `UPDATE_TASK`, `COMPLETE_TASK`) now support the same powerful filter array as `QUERY_TASKS`.
+- **Bulk Operations**: AI can now identify and execute bulk operations (e.g., "delete all completed tasks", "complete all overdue events") using specialized filters.
+
+### Changed
+- Refactored `action_query.c`, `action_delete.c`, `action_complete.c`, and `action_update.c` to use the common Query Engine.
+- Updated `PROMPT_B2_MUTATE` to support complex filter structures.
+- Improved code maintainability by removing redundant filtering logic across handlers.
+
+### Fixed
+- Fixed a bug where AI failed to identify bulk deletion intent correctly by adding explicit status filtering rules.
+- Resolved unused variable warnings (`TAG`, `all_entries`) during the build process.
+
 ## [v5.0.0] - 2026-04-02
 
 ### Added

@@ -26,6 +26,7 @@
 #include "esp_log.h"
 #include "cJSON.h"
 #include "telegram_bot.h"
+#include "query_engine.h"
 
 static const char *TAG = "action_delete";
 
@@ -49,14 +50,36 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
     const char *search_query = json_get_string(data, "search_query", "");
     const char *delete_mode = json_get_string(data, "delete_mode", "soft");
 
-    uint32_t explicit_task_ids[20];
+    uint32_t explicit_task_ids[MAX_TASK_COUNT];
     int explicit_count = 0;
+    
+    /* 1. ƯU TIÊN ID ĐÍCH DANH */
     cJSON *task_ids_json = cJSON_GetObjectItem(data, "task_ids");
     if (task_ids_json != NULL && cJSON_IsArray(task_ids_json)) {
         cJSON *item;
         cJSON_ArrayForEach(item, task_ids_json) {
-            if (cJSON_IsNumber(item) && explicit_count < 20) {
+            if (cJSON_IsNumber(item) && explicit_count < MAX_TASK_COUNT) {
                 explicit_task_ids[explicit_count++] = (uint32_t)item->valuedouble;
+            }
+        }
+    }
+
+    /* 2. NẾU CÓ BỘ LỌC (filters) -> DÙNG QUERY ENGINE */
+    cJSON *filters_arr = cJSON_GetObjectItem(data, "filters");
+    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr)) {
+        query_filter_t filters[MAX_FILTERS];
+        int filter_cnt = query_engine_parse_filters(filters_arr, filters, MAX_FILTERS);
+        query_engine_execute(filters, filter_cnt, explicit_task_ids, MAX_TASK_COUNT, &explicit_count);
+        ESP_LOGI(TAG, "Bulk delete via filters: %d tasks found", explicit_count);
+    }
+
+    /* Fallback cho logic cũ (status_filter string) - giữ lại để tương thích */
+    const char *status_filter = json_get_string(data, "status_filter", "");
+    if (explicit_count == 0 && status_filter && strlen(status_filter) > 0) {
+        const task_index_t *idx = task_database_get_index();
+        for (int i = 0; i < idx->count && explicit_count < MAX_TASK_COUNT; i++) {
+            if (strcmp(idx->entries[i].status, status_filter) == 0) {
+                explicit_task_ids[explicit_count++] = idx->entries[i].id;
             }
         }
     }
@@ -144,7 +167,13 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         }
         if (old_tasks) free(old_tasks);
 
-        if (deleted_count == 0) format_not_found("theo ID", response, response_size);
+        if (deleted_count == 0) {
+            if (status_filter && strlen(status_filter) > 0) {
+                snprintf(response, response_size, "ℹ️ Không tìm thấy công việc nào đang ở trạng thái '%s'.", status_filter);
+            } else {
+                format_not_found("theo ID", response, response_size);
+            }
+        }
         return ESP_OK;
     } else {
         if (strlen(query_buf) == 0) {

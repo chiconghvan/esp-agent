@@ -219,10 +219,15 @@ static const char *PROMPT_B2_MUTATE =
     "User: \"%s\"\n"
     "Context IDs: [%s]\n\n"
     "Trả JSON:\n"
-    "{\n"
-    "  \"task_ids\": [number],\n"
-    "  \"search_query\": \"string nếu không có ID\",\n"
-    "  \"delete_mode\": \"soft|hard (chỉ DELETE_TASK)\",\n"
+    "  \"search_query\": \"string nếu không có ID cụ thể\",\n"
+    "  \"filters\": [\n"
+    "    {\"field\": \"status\", \"op\": \"in|equals\", \"value\": [\"pending\",\"done\",\"overdue\",\"cancelled\"]},\n"
+    "    {\"field\": \"type\", \"op\": \"in|equals\", \"value\": [\"task\",\"event\",\"reminder\"]},\n"
+    "    {\"field\": \"due_time\", \"op\": \">=\", \"value\": \"ISO8601\"},\n"
+    "    {\"field\": \"due_time\", \"op\": \"<=\", \"value\": \"ISO8601\"},\n"
+    "    {\"field\": \"repeat\", \"op\": \"=\", \"value\": \"none|daily|weekly|monthly|yearly\"}\n"
+    "  ],\n"
+    "  \"delete_mode\": \"soft|hard (chỉ áp dụng DELETE)\",\n"
     "  \"updates\": {\n"
     "    \"title\": \"string|null\",\n"
     "    \"type\": \"meeting|report|reminder|event|anniversary|other|null\",\n"
@@ -247,6 +252,8 @@ static const char *PROMPT_B2_MUTATE =
     "7. DELETE: hủy/bỏ=soft, xóa hẳn=hard.\n"
     "8. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
     "9. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
+    "10. THAO TÁC HÀNG LOẠT (VD 'xóa các việc đã xong', 'xong tất cả buổi họp tuần này') → task_ids:[], filters: [...], search_query: null.\n"
+    "11. Nếu người dùng nhắc đến một TẬP HỢP (tất cả, các việc, những cái...) -> luôn ƯU TIÊN dùng filters thay vì search_query.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =

@@ -20,6 +20,9 @@
 #include "display_manager.h"
 #include "response_formatter.h"
 #include "config.h"
+#include "cJSON.h"
+#include "telegram_bot.h"
+#include "query_engine.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -43,16 +46,27 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
 
     const char *search_query = json_get_string(data, "search_query", "");
 
-    uint32_t explicit_task_ids[10];
+    uint32_t explicit_task_ids[MAX_TASK_COUNT];
     int explicit_count = 0;
+
+    /* 1. ƯU TIÊN ID ĐÍCH DANH */
     cJSON *task_ids_json = cJSON_GetObjectItem(data, "task_ids");
     if (task_ids_json != NULL && cJSON_IsArray(task_ids_json)) {
         cJSON *item;
         cJSON_ArrayForEach(item, task_ids_json) {
-            if (cJSON_IsNumber(item) && explicit_count < 10) {
+            if (cJSON_IsNumber(item) && explicit_count < MAX_TASK_COUNT) {
                 explicit_task_ids[explicit_count++] = (uint32_t)item->valuedouble;
             }
         }
+    }
+
+    /* 2. NẾU CÓ BỘ LỌC (filters) -> DÙNG QUERY ENGINE */
+    cJSON *filters_arr = cJSON_GetObjectItem(data, "filters");
+    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr)) {
+        query_filter_t filters[MAX_FILTERS];
+        int filter_cnt = query_engine_parse_filters(filters_arr, filters, MAX_FILTERS);
+        query_engine_execute(filters, filter_cnt, explicit_task_ids, MAX_TASK_COUNT, &explicit_count);
+        ESP_LOGI(TAG, "Bulk complete via filters: %d tasks found", explicit_count);
     }
 
     /* Copy query trước khi delete cJSON */
