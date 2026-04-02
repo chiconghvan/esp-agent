@@ -239,7 +239,7 @@ static const char *PROMPT_B2_MUTATE =
     "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
     "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
     "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\".\n"
-    "3. QUAN TRỌNG: TRONG search_query, PHẦI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
+    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
     "4. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
     "5. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
     "CẬP NHẬT & THỜI GIAN:\n"
@@ -424,9 +424,9 @@ static esp_err_t step_b1_classify(const char *user_message,
     build_context_ids_str(context_ids, sizeof(context_ids));
 
     /* Build prompt B1 */
-    char *prompt = (char *)malloc(2560);
+    char *prompt = (char *)malloc(4096);
     if (!prompt) return ESP_ERR_NO_MEM;
-    snprintf(prompt, 2560, PROMPT_B1, time_context, context_ids);
+    snprintf(prompt, 4096, PROMPT_B1, time_context, context_ids);
 
     /* Gọi AI */
     char llm_response[512];
@@ -468,7 +468,7 @@ static esp_err_t step_b2_parse(action_type_t intent,
     build_time_context(time_context, sizeof(time_context));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
-    char *prompt = (char *)malloc(3072);
+    char *prompt = (char *)malloc(4096);
     if (!prompt) return ESP_ERR_NO_MEM;
 
     switch (intent) {
