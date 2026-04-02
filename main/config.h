@@ -21,7 +21,7 @@
  * =========================================================================== */
 
 /** Phiên bản Firmware (dùng cho GitHub & Rollback) */
-#define FIRMWARE_VERSION         "4.4.1"
+#define FIRMWARE_VERSION         "5.0.0"
 
 /* ===========================================================================
  * WiFi Configuration (Mặc định nếu NVS trống, hoặc cấu hình qua Captive Portal)
@@ -39,18 +39,6 @@
 /** Thời gian chờ giữa các lần retry (ms) */
 #define WIFI_RETRY_DELAY_MS      5000
 
-/* ===========================================================================
- * Telegram Bot Configuration
- * Tạo bot tại: https://t.me/BotFather
- * Lấy Chat ID tại: https://t.me/userinfobot
- * =========================================================================== */
-
-/** Token của Telegram Bot (lấy từ @BotFather) - Moved to api.h */
-// #define TELEGRAM_BOT_TOKEN       "..."
-
-/** Chat ID của người dùng (lấy từ @userinfobot) - Moved to api.h */
-// #define TELEGRAM_CHAT_ID         "..."
-
 /** Thời gian timeout cho long polling (giây) */
 #define TELEGRAM_POLL_TIMEOUT_SEC    30
 
@@ -61,9 +49,6 @@
  * OpenAI API Configuration
  * Lấy API key tại: https://platform.openai.com/api-keys
  * =========================================================================== */
-
-/** API Key của OpenAI - Moved to api.h */
-// #define OPENAI_API_KEY           "..."
 
 /** Model dùng cho classification (phân loại tin nhắn) */
 #define OPENAI_MODEL             "gpt-4o-mini"
@@ -118,6 +103,12 @@
 /** Tên file index tổng hợp */
 #define TASK_INDEX_FILE          "/spiffs/tasks/index.json"
 
+/** Tên file lưu lịch sử công việc đã xong (line-based: timestamp|title) */
+#define TASK_HISTORY_FILE        "/spiffs/history.txt"
+
+/** Thời gian xóa cứng task đã xong (giây) - Mặc định 3 ngày */
+#define TASK_CLEANUP_THRESHOLD_SEC (3 * 24 * 3600)
+
 /* ===========================================================================
  * Semantic Search Configuration
  * =========================================================================== */
@@ -153,6 +144,12 @@
 #define DISPLAY_SPI_DC_GPIO     7
 #define DISPLAY_SPI_RST_GPIO    6
 
+/* ===========================================================================
+ * Input Configuration (Nút bấm cảm ứng)
+ * =========================================================================== */
+#define SYSTEM_BUTTON_GPIO       3  // Chuyển từ GPIO 9 (BOOT) sang GPIO 3 (Touch)
+#define SYSTEM_BUTTON_ACTIVE     1  // Touch Button thường là Active High (1)
+
 
 
 /* ===========================================================================
@@ -173,14 +170,5 @@
 
 /** Kích thước buffer cho OpenAI request body (bytes) */
 #define OPENAI_REQUEST_BUFFER_SIZE 10240
-
-/* ===========================================================================
- * Firebase Cloud Sync Configuration
- * =========================================================================== */
-/** Firebase Host - Moved to api.h */
-// #define FIREBASE_HOST           "..."
-/** Firebase Auth Key - Moved to api.h */
-// #define FIREBASE_AUTH           "..."
-
 
 #endif /* CONFIG_H */

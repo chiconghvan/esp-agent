@@ -132,7 +132,8 @@ static const char *PROMPT_B1 =
     "• QUERY_TASKS — Hỏi danh sách, đếm, lọc (theo thời gian, loại, trạng thái, quá hạn, sắp tới, định kỳ)\n"
     "• GET_TASK_DETAIL — Hỏi chi tiết 1 task cụ thể (thông tin, thời gian, ghi chú)\n"
     "• SEARCH_SEMANTIC — Tìm task theo nội dung/tên, không có hành động cụ thể\n"
-    "• TASK_SUMMARY — Thống kê tổng quan (\"tổng kết\", \"báo cáo tiến độ\")\n\n"
+    "• TASK_SUMMARY — Thống kê tổng quan (\"tổng kết\", \"báo cáo tiến độ\")\n"
+    "• VIEW_HISTORY — Xem lịch sử công việc đã xong (\"xem lịch sử\", \"nhật ký xong\", \"những gì đã làm\")\n\n"
     "KHÁC:\n"
     "• CHITCHAT — Không liên quan đến công việc\n\n"
     "QUY TẮC:\n"
@@ -238,7 +239,7 @@ static const char *PROMPT_B2_MUTATE =
     "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
     "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
     "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\".\n"
-    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
+    "3. QUAN TRỌNG: TRONG search_query, PHẦI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
     "4. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
     "5. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
     "CẬP NHẬT & THỜI GIAN:\n"
@@ -282,6 +283,15 @@ static const char *PROMPT_B2_SUMMARY =
     "Trả JSON:\n"
     "{\"period_start\": \"ISO8601|null\", \"period_end\": \"ISO8601|null\"}\n"
     "Mặc định: đầu tháng → hôm nay. TRA BẢNG thời gian ở trên.\n"
+    "CHỈ JSON thuần.";
+
+static const char *PROMPT_B2_HISTORY =
+    "Bạn là parser lịch sử công việc.\n"
+    "Intent: VIEW_HISTORY\n"
+    "User: \"%s\"\n\n"
+    "Trả JSON:\n"
+    "{\"limit\": 10, \"period\": \"all|recent|today\"}\n"
+    "Mặc định: limit=10, period=\"recent\".\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_CHITCHAT =
@@ -395,6 +405,7 @@ static action_type_t parse_intent(const char *intent_str)
     if (strcmp(intent_str, "GET_TASK_DETAIL") == 0)   return ACTION_GET_DETAIL;
     if (strcmp(intent_str, "SEARCH_SEMANTIC") == 0)   return ACTION_SEARCH_SEMANTIC;
     if (strcmp(intent_str, "TASK_SUMMARY") == 0)      return ACTION_TASK_SUMMARY;
+    if (strcmp(intent_str, "VIEW_HISTORY") == 0)      return ACTION_VIEW_HISTORY;
     if (strcmp(intent_str, "CHITCHAT") == 0)          return ACTION_CHITCHAT;
 
     return ACTION_UNKNOWN;
@@ -499,6 +510,11 @@ static esp_err_t step_b2_parse(action_type_t intent,
         case ACTION_TASK_SUMMARY:
             snprintf(prompt, 3072, PROMPT_B2_SUMMARY,
                      time_context, user_message);
+            break;
+
+        case ACTION_VIEW_HISTORY:
+            snprintf(prompt, 3072, PROMPT_B2_HISTORY,
+                     user_message);
             break;
 
         case ACTION_CHITCHAT:
@@ -742,6 +758,9 @@ esp_err_t action_dispatcher_handle(const char *user_message,
             break;
         case ACTION_TASK_SUMMARY:
             err = action_task_summary(data_json, response_buffer, buffer_size);
+            break;
+        case ACTION_VIEW_HISTORY:
+            err = action_view_history(data_json, response_buffer, buffer_size);
             break;
         default:
             snprintf(response_buffer, buffer_size,

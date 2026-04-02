@@ -186,4 +186,31 @@ esp_err_t task_database_write_raw(const task_record_t *task);
  */
 esp_err_t task_database_save_index(void);
 
+/**
+ * @brief Lưu lịch sự hoàn thành task vào file history.txt
+ * 
+ * @param title Tiêu đề task
+ * @param completed_at Thời điểm hoàn thành
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t task_database_log_history(const char *title, time_t completed_at);
+
+/**
+ * @brief Đọc lịch sử hoàn thành task (last N entries)
+ * 
+ * @param buffer Buffer để lưu kết quả formatted
+ * @param buffer_size Kích thước buffer
+ * @param limit Số lượng dòng tối đa cần đọc
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit);
+
+/**
+ * @brief Kiểm tra và xóa các task đã hoàn thành quá hạn (3 ngày)
+ * Xóa cả file task, index entry và embedding.
+ *
+ * @return esp_err_t ESP_OK nếu thành công
+ */
+esp_err_t task_database_cleanup_completed(void);
+
 #endif /* TASK_DATABASE_H */

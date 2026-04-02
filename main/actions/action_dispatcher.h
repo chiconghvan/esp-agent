@@ -31,6 +31,7 @@ typedef enum {
     ACTION_GET_DETAIL,
     ACTION_SEARCH_SEMANTIC,
     ACTION_TASK_SUMMARY,
+    ACTION_VIEW_HISTORY,
     /* Other */
     ACTION_CHITCHAT,
     ACTION_UNKNOWN
@@ -108,5 +109,6 @@ esp_err_t action_query_tasks(const char *data_json, char *response, size_t respo
 esp_err_t action_get_detail(const char *data_json, char *response, size_t response_size);
 esp_err_t action_search_semantic(const char *data_json, char *response, size_t response_size);
 esp_err_t action_task_summary(const char *data_json, char *response, size_t response_size);
+esp_err_t action_view_history(const char *data_json, char *response, size_t response_size);
 
 #endif /* ACTION_DISPATCHER_H */

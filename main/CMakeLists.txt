@@ -21,6 +21,7 @@ set(COMPONENT_SRCS
     "actions/action_complete.c"
     "actions/action_delete.c"
     "actions/action_update.c"
+    "actions/action_history.c"
     "scheduler/reminder_scheduler.c"
     "utils/time_utils.c"
     "utils/json_parser.c"

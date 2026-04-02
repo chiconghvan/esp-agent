@@ -22,6 +22,7 @@
 #include "esp_log.h"
 #include "esp_spiffs.h"
 #include "cJSON.h"
+#include "vector_search.h"
 
 static const char *TAG = "task_db";
 
@@ -681,4 +682,130 @@ esp_err_t task_database_write_raw(const task_record_t *task)
 const task_index_t *task_database_get_index(void)
 {
     return &task_index;
+}
+
+/* --------------------------------------------------------------------------
+ * Ghi lịch sử hoàn thành task (Append mode)
+ * -------------------------------------------------------------------------- */
+esp_err_t task_database_log_history(const char *title, time_t completed_at)
+{
+    if (title == NULL) return ESP_ERR_INVALID_ARG;
+
+    FILE *f = fopen(TASK_HISTORY_FILE, "a");
+    if (f == NULL) {
+        ESP_LOGE(TAG, "Không thể mở file history để ghi");
+        return ESP_FAIL;
+    }
+
+    fprintf(f, "%ld|%s\n", (long)completed_at, title);
+    fclose(f);
+
+    ESP_LOGI(TAG, "Đã ghi lịch sử: %s", title);
+    return ESP_OK;
+}
+
+/* --------------------------------------------------------------------------
+ * Đọc lịch sử hoàn thành task (Last N lines)
+ * -------------------------------------------------------------------------- */
+esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit)
+{
+    FILE *f = fopen(TASK_HISTORY_FILE, "r");
+    if (f == NULL) {
+        strncpy(buffer, "<i>(Chưa có lịch sử)</i>", buffer_size - 1);
+        return ESP_OK;
+    }
+
+    /* Đọc toàn bộ các dòng và lưu vào mảng tạm (để lấy N dòng cuối) */
+    char line[256];
+    char **lines = calloc(limit, sizeof(char *));
+    int count = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        // Remove newline
+        line[strcspn(line, "\r\n")] = 0;
+        if (strlen(line) == 0) continue;
+
+        if (lines[count % limit]) free(lines[count % limit]);
+        lines[count % limit] = strdup(line);
+        count++;
+    }
+    fclose(f);
+
+    if (count == 0) {
+        strncpy(buffer, "<i>(Lịch sử trống)</i>", buffer_size - 1);
+        free(lines);
+        return ESP_OK;
+    }
+
+    /* Format kết quả */
+    int start = (count > limit) ? (count % limit) : 0;
+    int items_to_show = (count > limit) ? limit : count;
+    int written = 0;
+    
+    written += snprintf(buffer + written, buffer_size - written, "📜 <b>Lịch sử %d công việc gần nhất:</b>\n\n", items_to_show);
+
+    for (int i = 0; i < items_to_show; i++) {
+        int idx = (start + i) % limit;
+        char *l = lines[idx];
+        if (!l) continue;
+
+        char *sep = strchr(l, '|');
+        if (sep) {
+            *sep = '\0';
+            time_t t = (time_t)atol(l);
+            const char *title = sep + 1;
+            
+            char time_buf[32];
+            time_utils_format_date_short(t, time_buf, sizeof(time_buf));
+            
+            written += snprintf(buffer + written, buffer_size - written, "✅ [%s] %s\n", time_buf, title);
+        }
+        free(l);
+    }
+    free(lines);
+
+    return ESP_OK;
+}
+
+/* --------------------------------------------------------------------------
+ * Dọn dẹp task đã xong quá 3 ngày
+ * -------------------------------------------------------------------------- */
+esp_err_t task_database_cleanup_completed(void)
+{
+    time_t now = time_utils_get_now();
+    int cleaned_count = 0;
+
+    // Duyệt ngược index để xóa an toàn (vì hard_delete làm thay đổi index.count và dịch chuyển mảng)
+    for (int i = task_index.count - 1; i >= 0; i--) {
+        task_index_entry_t *entry = &task_index.entries[i];
+
+        if (strcmp(entry->status, "done") == 0) {
+            // Đọc task chi tiết để lấy thông thông tin completed_at và repeat
+            task_record_t task;
+            if (load_task_file(entry->id, &task) == ESP_OK) {
+                // Chỉ xóa nếu là task thường (không lặp) và đã xong trên 3 ngày
+                if (strcmp(task.repeat, "none") == 0 && 
+                    task.completed_at > 0 && 
+                    (now - task.completed_at) > TASK_CLEANUP_THRESHOLD_SEC) {
+                    
+                    uint32_t tid = task.id;
+                    ESP_LOGI(TAG, "Cleanup: Đang xóa task #%" PRIu32 " (%s) do đã xong > 3 ngày", tid, task.title);
+                    
+                    // Xóa file task và index entry
+                    task_database_hard_delete(tid);
+                    
+                    // Xóa embedding
+                    vector_search_delete(tid);
+                    
+                    cleaned_count++;
+                }
+            }
+        }
+    }
+
+    if (cleaned_count > 0) {
+        ESP_LOGI(TAG, "Cleanup hoàn tất: Đã xóa vĩnh viễn %d tasks", cleaned_count);
+    }
+
+    return ESP_OK;
 }

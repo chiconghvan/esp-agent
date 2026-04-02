@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.0.0] - 2026-04-02
+
+### Added
+- **Automatic Task Cleanup**: Implemented logic to permanently delete non-recurring completed tasks after 3 days.
+- **Task History Logging**: Added a persistent, line-based history log (`history.txt`) for all completed tasks to track progress without storage limits.
+- **View History on Telegram**: New `VIEW_HISTORY` intent and Telegram action to retrieve and display recently completed tasks.
+- Dedicated background maintenance task in `reminder_scheduler` running daily at 3:00 AM.
+
+## [v4.5.0] - 2026-04-01
+
+### Changed
+- Refined boot progress percentage sequence for smoother initialization feedback.
+- Adjusted SPI hardware pins in `config.h` for improved display stability.
+- Improved **Daily Briefing** logic to automatically include overdue tasks in the 8:00 AM notification.
+- Cleaned up codebase by removing legacy `config.h.example`.
+- Updated `README.md` with current project status and documentation.
+
+## [v4.4.1] - 2026-03-23
+
+### Changed
+- Refactored API key management by moving sensitive credentials to a dedicated `api.h` file.
+- Updated `.gitignore` to protect `api.h` from version control.
+
+### Added
+- New `api.h.sample` file to serve as a secure configuration template for developers.
+
 ## [v4.4.0] - 2026-03-21
 
 ### Added

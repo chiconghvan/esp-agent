@@ -95,8 +95,11 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
                         task.completed_at = time_utils_get_now();
                     }
                     
-                    if (task_database_update(&task) == ESP_OK) {
-                        if (written < response_size) {
+                        if (task_database_update(&task) == ESP_OK) {
+                            /* Ghi lịch sử (Sử dụng title từ database vì title trong struct task_record_t có thể dài đến 128 bytes) */
+                            task_database_log_history(task.title, time_utils_get_now());
+
+                            if (written < response_size) {
                             if (is_recurring) {
                                 char next_due_buf[64];
                                 time_utils_format_vietnamese(task.due_time, next_due_buf, sizeof(next_due_buf));
@@ -241,6 +244,9 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
             format_error("Không thể cập nhật task", response, response_size);
             return err;
         }
+
+        /* Ghi lịch sử */
+        task_database_log_history(task.title, time_utils_get_now());
 
         /* Lưu undo log */
         action_undo_save(UNDO_COMPLETE, &old_task, 1);

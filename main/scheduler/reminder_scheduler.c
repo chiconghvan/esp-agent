@@ -195,6 +195,14 @@ static void reminder_task(void *arg)
             }
             s_last_briefing_yday = tm_n.tm_yday;
         }
+
+        /* === Phần 6: Dọn dẹp task đã xong quá 3 ngày (Chạy lúc 3:00 sáng) === */
+        static int s_last_cleanup_yday = -1;
+        if (tm_n.tm_hour == 3 && tm_n.tm_min <= 2 && s_last_cleanup_yday != tm_n.tm_yday) {
+            ESP_LOGI(TAG, "Đang chạy dọn dẹp định kỳ các task đã hoàn thành...");
+            task_database_cleanup_completed();
+            s_last_cleanup_yday = tm_n.tm_yday;
+        }
     }
     free(query_results);
     scheduler_task_handle = NULL;
