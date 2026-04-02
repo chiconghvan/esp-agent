@@ -21,6 +21,8 @@
 #include "esp_tls.h"
 #include "esp_crt_bundle.h"
 #include "display_manager.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "network_gatekeeper.h"
 
 static const char *TAG = "telegram_bot";
@@ -225,23 +227,15 @@ esp_err_t telegram_bot_get_update(telegram_message_t *message)
 /* --------------------------------------------------------------------------
  * Gửi tin nhắn qua Telegram
  * -------------------------------------------------------------------------- */
-esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
+/** Gửi 1 lần (không retry) — logic nội bộ */
+static esp_err_t _send_once(int64_t chat_id, const char *text)
 {
-    if (text == NULL || strlen(text) == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    /* Xây dựng URL */
     char url[256];
     snprintf(url, sizeof(url), "%s%s/sendMessage",
              TELEGRAM_API_URL, TELEGRAM_BOT_TOKEN);
 
-    /* Xây dựng JSON body */
     cJSON *body = cJSON_CreateObject();
-    if (body == NULL) {
-        ESP_LOGE(TAG, "Không thể tạo JSON body");
-        return ESP_ERR_NO_MEM;
-    }
+    if (body == NULL) return ESP_ERR_NO_MEM;
 
     cJSON_AddNumberToObject(body, "chat_id", (double)chat_id);
     cJSON_AddStringToObject(body, "text", text);
@@ -249,17 +243,11 @@ esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
 
     char *body_str = cJSON_PrintUnformatted(body);
     cJSON_Delete(body);
+    if (body_str == NULL) return ESP_ERR_NO_MEM;
 
-    if (body_str == NULL) {
-        ESP_LOGE(TAG, "Không thể serialize JSON body");
-        return ESP_ERR_NO_MEM;
-    }
-
-    /* Reset response buffer */
     response_buffer_len = 0;
     memset(response_buffer, 0, sizeof(response_buffer));
 
-    /* Cấu hình HTTP client */
     esp_http_client_config_t config = {
         .url = url,
         .event_handler = http_event_handler,
@@ -270,12 +258,8 @@ esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
-        free(body_str);
-        return ESP_FAIL;
-    }
+    if (client == NULL) { free(body_str); return ESP_FAIL; }
 
-    /* POST request */
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body_str, strlen(body_str));
@@ -286,24 +270,48 @@ esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
     if (err == ESP_OK) {
         status_code = esp_http_client_get_status_code(client);
     }
-
     esp_http_client_cleanup(client);
     network_unlock();
     free(body_str);
 
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Gửi tin nhắn thất bại: %s", esp_err_to_name(err));
-        return err;
-    }
-
+    if (err != ESP_OK) return err;
     if (status_code != 200) {
-        ESP_LOGW(TAG, "sendMessage trả về status: %d", status_code);
-        ESP_LOGW(TAG, "Nội dung lỗi Telegram: %.200s", response_buffer);
+        ESP_LOGW(TAG, "sendMessage status: %d | %.200s", status_code, response_buffer);
         return ESP_FAIL;
     }
-
-    ESP_LOGI(TAG, "Đã gửi tin nhắn thành công (chat_id=%" PRId64 ")", chat_id);
     return ESP_OK;
+}
+
+/** Số lần retry tối đa khi gửi tin nhắn thất bại */
+#define SEND_MAX_RETRIES  1
+/** Thời gian chờ giữa các lần retry (ms) */
+#define SEND_RETRY_DELAY_MS  2000
+
+esp_err_t telegram_bot_send_message(int64_t chat_id, const char *text)
+{
+    if (text == NULL || strlen(text) == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = _send_once(chat_id, text);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Đã gửi tin nhắn (chat_id=%" PRId64 ")", chat_id);
+        return ESP_OK;
+    }
+
+    /* Retry nếu thất bại */
+    for (int i = 0; i < SEND_MAX_RETRIES; i++) {
+        ESP_LOGW(TAG, "Gửi thất bại, retry %d/%d sau %dms...", i + 1, SEND_MAX_RETRIES, SEND_RETRY_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(SEND_RETRY_DELAY_MS));
+        err = _send_once(chat_id, text);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Retry thành công (chat_id=%" PRId64 ")", chat_id);
+            return ESP_OK;
+        }
+    }
+
+    ESP_LOGE(TAG, "Gửi tin nhắn thất bại sau %d lần retry", SEND_MAX_RETRIES + 1);
+    return err;
 }
 
 /* --------------------------------------------------------------------------

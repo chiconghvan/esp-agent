@@ -28,7 +28,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-// static const char *TAG = "display"; // Unused
 static u8g2_t u8g2;
 
 static SemaphoreHandle_t s_display_mutex = NULL;
@@ -630,7 +629,6 @@ static void display_task(void *arg)
         /* ──── Polling Nút BOOT cho Reset WiFi ──── */
         if (gpio_get_level(BOOT_BUTTON_GPIO) == BOOT_BUTTON_ACTIVE) {
             TickType_t start_hold = xTaskGetTickCount();
-            bool still_holding = true;
             while (gpio_get_level(BOOT_BUTTON_GPIO) == BOOT_BUTTON_ACTIVE) {
                 uint32_t hold_ms = (xTaskGetTickCount() - start_hold) * portTICK_PERIOD_MS;
                 if (hold_ms >= 3000) { 
