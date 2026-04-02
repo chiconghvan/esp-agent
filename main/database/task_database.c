@@ -791,6 +791,13 @@ esp_err_t task_database_cleanup_completed(void)
                     uint32_t tid = task.id;
                     ESP_LOGI(TAG, "Cleanup: Đang xóa task #%" PRIu32 " (%s) do đã xong > 3 ngày", tid, task.title);
                     
+                    /* Đảm bảo ghi vào lịch sử trước khi xóa dành cho các task CŨ 
+                       (Hoàn thành trước khi cập nhật tính năng history - khoảng 10:30 sáng 02/04/2026)
+                       Timestamp: 1743564600 */
+                    if (task.completed_at < 1743564600) {
+                        task_database_log_history(task.title, task.completed_at);
+                    }
+
                     // Xóa file task và index entry
                     task_database_hard_delete(tid);
                     
