@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.1.2] - 2026-04-02
+
+### Added
+- **Quick Command `/done`**: Added `/done <ids>` support for instant task completion by ID without LLM processing.
+- **Telegram Connection Retry**: Implemented automatic retry (1 attempt after 2s) for `sendMessage` to prevent message loss on flaky networks.
+
+### Changed
+- **UI/LCD Feedback**: Refactored `action_complete.c` to ensure result popups and idle screen refreshes are mandatory for all completion methods.
+- **Enhanced LLM B2 Schema**: Added `task_ids` to the `PROMPT_B2_MUTATE` JSON template to improve AI extraction accuracy for specific task IDs.
+
+### Fixed
+- **Code Hygiene**: Resolved all `unused variable` warnings across `action_complete.c`, `display_manager.c`, and `action_dispatcher.c`.
+- **LCD Refresh Bug**: Fixed a bug where result popups were instantly overwritten by idle screen updates.
+
 ## [v5.1.0] - 2026-04-02
 
 ### Added
