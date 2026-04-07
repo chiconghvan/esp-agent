@@ -58,7 +58,7 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
 
     /* 2. Trích xuất Filter (nếu không có ID) */
     cJSON *filters_arr = cJSON_GetObjectItem(data, "filters");
-    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr)) {
+    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr) && cJSON_GetArraySize(filters_arr) > 0) {
         query_filter_t filters[MAX_FILTERS];
         int filter_cnt = query_engine_parse_filters(filters_arr, filters, MAX_FILTERS);
         query_engine_execute(filters, filter_cnt, explicit_task_ids, MAX_TASK_COUNT, &explicit_count);

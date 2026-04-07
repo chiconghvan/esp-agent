@@ -66,7 +66,7 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
 
     /* 2. NẾU CÓ BỘ LỌC (filters) -> DÙNG QUERY ENGINE */
     cJSON *filters_arr = cJSON_GetObjectItem(data, "filters");
-    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr)) {
+    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr) && cJSON_GetArraySize(filters_arr) > 0) {
         query_filter_t filters[MAX_FILTERS];
         int filter_cnt = query_engine_parse_filters(filters_arr, filters, MAX_FILTERS);
         query_engine_execute(filters, filter_cnt, explicit_task_ids, MAX_TASK_COUNT, &explicit_count);
@@ -264,10 +264,18 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
     int success_count = 0;
     int written = snprintf(response, response_size, "🗑️ **ĐÃ XÓA VĨNH VIỄN**\n───────────────\n");
 
+    /* Save tasks for Undo before deletion */
+    task_record_t *deleted_tasks = malloc(sizeof(task_record_t) * s_pending_count);
+    int deleted_count = 0;
+
     for (int i = 0; i < s_pending_count; i++) {
         uint32_t id = s_pending_deletes[i];
         task_record_t t;
         if (task_database_read(id, &t) == ESP_OK) {
+            if (deleted_tasks) {
+                deleted_tasks[deleted_count++] = t;
+            }
+
             char title_tmp[64];
             strncpy(title_tmp, t.title, 63); title_tmp[63] = '\0';
 
@@ -283,12 +291,15 @@ esp_err_t action_delete_confirm_hard(char *response, size_t response_size)
         snprintf(response + written, response_size - written, "───────────────\n🚀 Thành công %d task.", success_count);
         display_show_result("Xoa xong", success_count, "tasks");
         
-        /* Delete Undo Queue since we did a hard delete */
-        action_undo_clear();
+        /* Save to Undo buffer */
+        if (deleted_tasks && deleted_count > 0) {
+            action_undo_save(UNDO_DELETE, deleted_tasks, deleted_count);
+        }
     } else {
         snprintf(response, response_size, "❌ Không thể thực hiện xóa. Có lỗi xảy ra.");
     }
 
+    if (deleted_tasks) free(deleted_tasks);
     s_pending_count = 0; // Xóa sạch hàng đợi sau khi dùng
     ESP_LOGI(TAG, "Đã hoàn thành xác nhận xóa vĩnh viễn.");
     return ESP_OK;

@@ -86,7 +86,7 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
 
     /* 2. NẾU CÓ BỘ LỌC (filters) -> DÙNG QUERY ENGINE */
     cJSON *filters_arr = cJSON_GetObjectItem(data, "filters");
-    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr)) {
+    if (explicit_count == 0 && filters_arr != NULL && cJSON_IsArray(filters_arr) && cJSON_GetArraySize(filters_arr) > 0) {
         query_filter_t filters[MAX_FILTERS];
         int filter_cnt = query_engine_parse_filters(filters_arr, filters, MAX_FILTERS);
         query_engine_execute(filters, filter_cnt, explicit_task_ids, MAX_TASK_COUNT, &explicit_count);

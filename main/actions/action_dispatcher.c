@@ -245,17 +245,21 @@ static const char *PROMPT_B2_MUTATE =
     "}\n\n"
     "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
     "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
-    "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\".\n"
-    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"sửa\", \"đổi\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
+    "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\", filters:null.\n"
+    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"xóa hoàn toàn\", \"hoàn toàn\", \"hẳn\", \"sửa\", \"đổi\", \"cập nhật\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
     "4. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
     "5. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
+    "PHÂN BIỆT search_query VÀ filters (TUYỆT ĐỐI TUÂN THỦ):\n"
+    "6. search_query VÀ filters KHÔNG ĐƯỢC DÙNG ĐỒNG THỜI. Chọn 1 trong 2:\n"
+    "   - Tìm 1 TASK CỤ THỂ theo tên → search_query=\"tên task\", filters:null.\n"
+    "   - Thao tác HÀNG LOẠT theo điều kiện → filters:[...], search_query:null.\n"
+    "7. TUYỆT ĐỐI KHÔNG trả filters:[] (mảng rỗng). Nếu không cần filter → filters:null.\n"
+    "8. Nếu người dùng nhắc đến TẬP HỢP (tất cả, các việc, những cái...) → ƯU TIÊN dùng filters.\n\n"
     "CẬP NHẬT & THỜI GIAN:\n"
-    "6. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
-    "7. DELETE: hủy/bỏ=soft, xóa hẳn=hard.\n"
-    "8. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
-    "9. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
-    "10. THAO TÁC HÀNG LOẠT (VD 'xóa các việc đã xong', 'xong tất cả buổi họp tuần này') → task_ids:[], filters: [...], search_query: null.\n"
-    "11. Nếu người dùng nhắc đến một TẬP HỢP (tất cả, các việc, những cái...) -> luôn ƯU TIÊN dùng filters thay vì search_query.\n"
+    "9. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
+    "10. DELETE: hủy/bỏ=soft, xóa hẳn/xóa hoàn toàn=hard.\n"
+    "11. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
+    "12. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
@@ -477,57 +481,58 @@ static esp_err_t step_b2_parse(action_type_t intent,
     build_time_context(time_context, sizeof(time_context));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
-    char *prompt = (char *)malloc(4096);
+    const size_t prompt_size = 5120;
+    char *prompt = (char *)malloc(prompt_size);
     if (!prompt) return ESP_ERR_NO_MEM;
 
     switch (intent) {
         case ACTION_CREATE_TASK:
-            snprintf(prompt, 3072, PROMPT_B2_CREATE,
+            snprintf(prompt, prompt_size, PROMPT_B2_CREATE,
                      time_context, user_message);
             break;
 
         case ACTION_QUERY_TASKS:
-            snprintf(prompt, 3072, PROMPT_B2_QUERY,
+            snprintf(prompt, prompt_size, PROMPT_B2_QUERY,
                      time_context, user_message);
             break;
 
         case ACTION_UPDATE_TASK:
-            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
+            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
                      time_context, "UPDATE_TASK", user_message, context_ids);
             break;
 
         case ACTION_COMPLETE_TASK:
-            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
+            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
                      time_context, "COMPLETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_DELETE_TASK:
-            snprintf(prompt, 3072, PROMPT_B2_MUTATE,
+            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
                      time_context, "DELETE_TASK", user_message, context_ids);
             break;
 
         case ACTION_GET_DETAIL:
-            snprintf(prompt, 3072, PROMPT_B2_DETAIL,
+            snprintf(prompt, prompt_size, PROMPT_B2_DETAIL,
                      time_context, user_message, context_ids);
             break;
 
         case ACTION_SEARCH_SEMANTIC:
-            snprintf(prompt, 3072, PROMPT_B2_SEARCH,
+            snprintf(prompt, prompt_size, PROMPT_B2_SEARCH,
                      user_message);
             break;
 
         case ACTION_TASK_SUMMARY:
-            snprintf(prompt, 3072, PROMPT_B2_SUMMARY,
+            snprintf(prompt, prompt_size, PROMPT_B2_SUMMARY,
                      time_context, user_message);
             break;
 
         case ACTION_VIEW_HISTORY:
-            snprintf(prompt, 3072, PROMPT_B2_HISTORY,
+            snprintf(prompt, prompt_size, PROMPT_B2_HISTORY,
                      user_message);
             break;
 
         case ACTION_CHITCHAT:
-            snprintf(prompt, 3072, PROMPT_B2_CHITCHAT,
+            snprintf(prompt, prompt_size, PROMPT_B2_CHITCHAT,
                      user_message);
             break;
 
