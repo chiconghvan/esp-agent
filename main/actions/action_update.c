@@ -245,7 +245,21 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
             return ESP_FAIL;
         }
 
-        ESP_LOGI(TAG, "Update task semantic search: %s", query_buf);
+        ESP_LOGI(TAG, "Update task search: %s", query_buf);
+
+        /* Thử trích xuất type filter từ mảng filters để thu hẹp phạm vi tìm kiếm vector */
+        const char *type_from_filter = NULL;
+        cJSON *f_arr = cJSON_GetObjectItem(data, "filters");
+        if (f_arr && cJSON_IsArray(f_arr)) {
+            cJSON *f_item;
+            cJSON_ArrayForEach(f_item, f_arr) {
+                const char *field_name = json_get_string(f_item, "field", "");
+                if (strcmp(field_name, "type") == 0) {
+                    type_from_filter = json_get_string(f_item, "value", NULL);
+                    break;
+                }
+            }
+        }
 
         /* Tạo embedding cho search query */
         float query_embedding[EMBEDDING_DIM];
@@ -259,7 +273,7 @@ esp_err_t action_update_task(const char *data_json, char *response, size_t respo
         /* Tìm task matching cao nhất */
         search_result_t search_results[SEARCH_TOP_K];
         int found_count = 0;
-        err = vector_search_find_similar(query_embedding, query_buf, NULL, search_results,
+        err = vector_search_find_similar(query_embedding, query_buf, NULL, type_from_filter, search_results,
                                           SEARCH_TOP_K, &found_count);
 
         if (err != ESP_OK || found_count == 0) {

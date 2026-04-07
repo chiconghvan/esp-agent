@@ -41,11 +41,16 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
     /* Parse task_ids */
     cJSON *ids_arr = cJSON_GetObjectItem(data, "task_ids");
     const char *search_query = json_get_string(data, "search_query", NULL);
+    const char *type_filter = json_get_string(data, "type_filter", NULL);
 
-    /* Copy search_query trước khi delete cJSON */
+    /* Copy search_query và type_filter */
     char query_buf[256] = {0};
     if (search_query && strlen(search_query) > 0) {
         strncpy(query_buf, search_query, sizeof(query_buf) - 1);
+    }
+    char type_buf[32] = {0};
+    if (type_filter && strlen(type_filter) > 0 && strcmp(type_filter, "null") != 0) {
+        strncpy(type_buf, type_filter, sizeof(type_buf) - 1);
     }
 
     /* Lấy task IDs */
@@ -65,27 +70,48 @@ esp_err_t action_get_detail(const char *data_json, char *response, size_t respon
     cJSON_Delete(data);
 
     /* Nếu không có ID → dùng semantic search */
-    if (id_count == 0 && strlen(query_buf) > 0) {
-        ESP_LOGI(TAG, "Semantic search cho detail: %s", query_buf);
+    if (id_count == 0 && (strlen(query_buf) > 0 || strlen(type_buf) > 0)) {
+        ESP_LOGI(TAG, "Search cho detail: query='%s', type='%s'", query_buf, type_buf);
 
         float query_embedding[EMBEDDING_DIM];
-        esp_err_t err = openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
-        if (err != ESP_OK) {
-            format_error("Không thể tìm kiếm", response, response_size);
-            return err;
+        bool has_query = (strlen(query_buf) > 0);
+        
+        if (has_query) {
+            esp_err_t err = openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
+            if (err != ESP_OK) {
+                format_error("Không thể tìm kiếm", response, response_size);
+                return err;
+            }
         }
 
         search_result_t search_results[3];
         int found = 0;
-        err = vector_search_find_similar(query_embedding, query_buf, NULL, search_results, 3, &found);
-        if (err != ESP_OK || found == 0) {
-            format_not_found(query_buf, response, response_size);
-            return ESP_OK;
+        
+        if (has_query) {
+            esp_err_t err = vector_search_find_similar(query_embedding, query_buf, NULL, 
+                                                       type_buf[0] ? type_buf : NULL, 
+                                                       search_results, 3, &found);
+            if (err != ESP_OK || found == 0) {
+                format_not_found(query_buf, response, response_size);
+                return ESP_OK;
+            }
+        } else {
+            /* Chỉ có type → liệt kê task mới nhất của type đó */
+            const task_index_t *index = task_database_get_index();
+            for (int i = index->count - 1; i >= 0 && id_count < 3; i--) {
+                if (strcmp(index->entries[i].type, type_buf) == 0) {
+                    if (strcmp(index->entries[i].status, "cancelled") != 0) {
+                        task_ids[id_count++] = index->entries[i].id;
+                    }
+                }
+            }
         }
 
-        /* Lấy task ID có điểm cao nhất */
-        for (int i = 0; i < found && id_count < 5; i++) {
-            task_ids[id_count++] = search_results[i].task_id;
+        /* Lấy task ID từ search results nếu dùng semantic */
+        if (has_query) {
+            for (int i = 0; i < found && id_count < 5; i++) {
+                task_ids[id_count++] = search_results[i].task_id;
+            }
         }
     }
 

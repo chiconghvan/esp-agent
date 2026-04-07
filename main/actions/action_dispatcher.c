@@ -137,16 +137,16 @@ static const char *PROMPT_B1 =
     "KHÁC:\n"
     "• CHITCHAT — Không liên quan đến công việc\n\n"
     "QUY TẮC:\n"
-    "1. \"bao nhiêu\", \"mấy cái\" → QUERY_TASKS\n"
-    "2. \"khi nào\", \"thời hạn\" của 1 task cụ thể → GET_TASK_DETAIL\n"
+    "1. \"bao nhiêu\", \"mấy cái\", \"liệt kê\", \"danh sách\" → QUERY_TASKS\n"
+    "2. \"khi nào\", \"bao giờ\", \"thời hạn\", \"mấy giờ\" của 1 task cụ thể → GET_TASK_DETAIL\n"
     "3. Nhập tên task KHÔNG kèm hành động → SEARCH_SEMANTIC\n"
     "4. \"tổng kết\", \"tình hình chung\" → TASK_SUMMARY\n"
     "5. \"hủy\"/\"bỏ\" hoặc \"xóa hẳn\" → DELETE_TASK\n"
     "6. Sự kiện kéo dài nhiều ngày → CREATE_TASK\n"
-    "7. Hỏi CHUNG về danh sách/tất cả (\"kỉ niệm\", \"sinh nhật\", \"lễ\") → QUERY_TASKS\n"
-    "8. Hỏi thông tin 1 task (\"về task X\", \"task Y như nào\") → SEARCH_SEMANTIC\n"
-    "9. Khi không chắc → ƯU TIÊN QUERY_TASKS hoặc SEARCH_SEMANTIC, TRÁNH CHITCHAT\n"
-    "10. QUAN TRỌNG: Nếu có động từ hành động ở phần đầu (hoàn thành, xong, đã làm, hủy, xóa, sửa, cập nhật, đổi, tạo, nhắc...) → BẮT BUỘC chọn nhóm MUTATION (CREATE/UPDATE/COMPLETE/DELETE). Tuyệt đối KHÔNG chọn SEARCH_SEMANTIC hay GET_TASK_DETAIL trong trường hợp này.\n\n"
+    "7. Hỏi DANH SÁCH chung về loại (\"các ngày kỉ niệm\", \"những cuộc họp\") → QUERY_TASKS\n"
+    "8. Hỏi thông tin 1 task cụ thể (\"về task X\", \"ngày kỉ niệm cưới bao giờ\") → GET_TASK_DETAIL\n"
+    "9. Khi không chắc → ƯU TIÊN SEARCH_SEMANTIC nếu có tên task, QUERY_TASKS nếu hỏi số lượng.\n"
+    "10. QUAN TRỌNG: Nếu có động từ hành động ở phần đầu (hoàn thành, xong, đã làm, hủy, xóa, sửa, cập nhật, đổi, tạo, nhắc...) → BẮT BUỘC chọn nhóm MUTATION (CREATE/UPDATE/COMPLETE/DELETE).\n\n"
     "CHỈ trả JSON thuần, KHÔNG markdown:\n"
     "{\"intent\": \"...\", \"confidence\": 0.0-1.0}";
 
@@ -216,65 +216,44 @@ static const char *PROMPT_B2_MUTATE =
     "Bạn là parser hành động.\n"
     "%s\n"
     "Intent: %s\n"
-    "User: \"%s\"\n"
-    "Context IDs: [%s]\n\n"
+    "User: \"%s\"\n\n"
     "Trả JSON:\n"
     "{\n"
     "  \"task_ids\": [number],\n"
     "  \"search_query\": \"string nếu không có ID cụ thể\",\n"
     "  \"filters\": [\n"
-    "    {\"field\": \"status\", \"op\": \"in|equals\", \"value\": [\"pending\",\"done\",\"overdue\",\"cancelled\"]},\n"
-    "    {\"field\": \"type\", \"op\": \"in|equals\", \"value\": [\"task\",\"event\",\"reminder\"]},\n"
-    "    {\"field\": \"due_time\", \"op\": \">=\", \"value\": \"ISO8601\"},\n"
-    "    {\"field\": \"due_time\", \"op\": \"<=\", \"value\": \"ISO8601\"},\n"
-    "    {\"field\": \"repeat\", \"op\": \"=\", \"value\": \"none|daily|weekly|monthly|yearly\"}\n"
+    "    {\"field\": \"status\", \"op\": \"equals\", \"value\": \"pending|done|overdue\"},\n"
+    "    {\"field\": \"type\", \"op\": \"equals\", \"value\": \"report|meeting|reminder|event|anniversary\"}\n"
     "  ],\n"
-    "  \"delete_mode\": \"soft|hard (chỉ áp dụng DELETE)\",\n"
-    "  \"updates\": {\n"
-    "    \"title\": \"string|null\",\n"
-    "    \"type\": \"meeting|report|reminder|event|anniversary|other|null\",\n"
-    "    \"due_time\": \"ISO8601|none|null\",\n"
-    "    \"start_time\": \"ISO8601|none|null\",\n"
-    "    \"reminder\": \"ISO8601|none|null\",\n"
-    "    \"due_offset_days\": \"number|null\",\n"
-    "    \"reminder_offset_days\": \"number|null\",\n"
-    "    \"repeat\": \"string|null\",\n"
-    "    \"repeat_interval\": \"number|null\",\n"
-    "    \"notes\": \"string|null\"\n"
-    "  }\n"
+    "  \"updates\": {\"title\": \"string\", \"type\": \"string\", \"due_time\": \"ISO8601\"}\n"
     "}\n\n"
-    "QUY TẮC CHỌN TASK (TUYỆT ĐỐI TUÂN THỦ NGHIÊM NGẶT):\n"
-    "1. KHÔNG TỰ BỊA RA task_ids HOẶC LẤY TỪ Context IDs NẾU NGƯỜI DÙNG CÓ NHẮC ĐẾN TÊN HOẶC MÔ TẢ TASK.\n"
-    "2. User NÓI TÊN HOẶC MÔ TẢ (VD \"xong báo cáo test\", \"hủy họp\") → task_ids:[], search_query:\"tên/mô tả đó\", filters:null.\n"
-    "3. QUAN TRỌNG: TRONG search_query, PHẢI LOẠI BỎ tất cả các từ khóa chỉ hành động/intent (VD: \"hoàn thành\", \"xong\", \"đã làm\", \"hủy\", \"bỏ\", \"xóa\", \"xóa hoàn toàn\", \"hoàn toàn\", \"hẳn\", \"sửa\", \"đổi\", \"cập nhật\"). Chỉ giữ lại nội dung cốt lõi của task.\n"
-    "4. User CHỈ ĐỊNH RÕ SỐ ID (VD \"số 5\", \"task 12\") → task_ids:[ID đó], search_query:null.\n"
-    "5. CHỈ KHI user dùng đại từ (VD \"nó\", \"task đó\") hoặc CHỈ CÓ LỆNH KHÔNG CÓ TÊN/ID (VD \"xong\", \"hủy\") → MỚI chép Context IDs vào task_ids, search_query:null.\n\n"
-    "PHÂN BIỆT search_query VÀ filters (TUYỆT ĐỐI TUÂN THỦ):\n"
-    "6. search_query VÀ filters KHÔNG ĐƯỢC DÙNG ĐỒNG THỜI. Chọn 1 trong 2:\n"
-    "   - Tìm 1 TASK CỤ THỂ theo tên → search_query=\"tên task\", filters:null.\n"
-    "   - Thao tác HÀNG LOẠT theo điều kiện → filters:[...], search_query:null.\n"
-    "7. TUYỆT ĐỐI KHÔNG trả filters:[] (mảng rỗng). Nếu không cần filter → filters:null.\n"
-    "8. Nếu người dùng nhắc đến TẬP HỢP (tất cả, các việc, những cái...) → ƯU TIÊN dùng filters.\n\n"
-    "CẬP NHẬT & THỜI GIAN:\n"
-    "9. Field không đổi → null. Chỉ \"none\" nếu user bảo XÓA/BỎ field.\n"
-    "10. DELETE: hủy/bỏ=soft, xóa hẳn/xóa hoàn toàn=hard.\n"
-    "11. Thiếu năm → năm hiện tại. KHÔNG dùng 1970.\n"
-    "12. TRA BẢNG thời gian ở trên cho biểu thức tương đối (ngày mai, thứ 6...).\n"
+    "QUY TẮC CHỌN TASK (ƯU TIÊN 1 - CỰC KỲ QUAN TRỌNG):\n"
+    "1. CHỈ CHỌN 1 TRONG 2 CHẾ ĐỘ:\n"
+    "   - CHẾ ĐỘ ID: User nói số (\"số 5\") hoặc đại từ (\"nó\", \"đó\") → task_ids:[ID], search_query:null.\n"
+    "   - CHẾ ĐỘ TÌM KIẾM: User nói TÊN/MÔ TẢ task (VD: \"kỉ niệm cưới\", \"báo cáo\") → task_ids:[] (BẮT BUỘC RỖNG), search_query:\"tên task\".\n"
+    "2. TUYỆT ĐỐI NGHIÊM CẤM: Không được điền task_ids nếu user đang tìm theo tên.\n"
+    "3. TỰ ĐỘNG PHÁT HIỆN TYPE và đưa vào filters. VD: \"xong báo cáo test\" → search_query=\"test\", filters:[{field:\"type\", op:\"=\", value:\"report\"}].\n"
+    "4. LÀM SẠCH search_query: PHẢI XÓA bỏ các từ chỉ loại (báo cáo, họp, kỉ niệm...) khỏi search_query.\n"
+    "   - VD: \"hủy họp sáng nay\" → search_query: \"sáng nay\", type: \"meeting\".\n"
+    "   - VD: \"xong báo cáo test\" → search_query: \"test\", type: \"report\".\n\n"
+    "Context IDs đang hiển thị (CHỈ DÙNG CHO CHẾ ĐỘ ID): [%s]\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
     "Bạn là parser truy vấn chi tiết.\n"
     "%s\n"
     "Intent: GET_TASK_DETAIL\n"
-    "User: \"%s\"\n"
-    "Context IDs: [%s]\n\n"
+    "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"task_ids\": [number], \"search_query\": \"string nếu mô tả tên task\"}\n\n"
-    "QUY TẮC (TUÂN THỦ TUYỆT ĐỐI):\n"
-    "1. User NÓI SỐ ID (\"task 3\", \"#5\") → task_ids:[số đó], search_query:null.\n"
-    "2. User NÓI TÊN (\"sinh nhật Linh\", \"báo cáo X\") → task_ids:[], search_query:\"tên cụ thể\".\n"
-    "3. LOẠI BỎ các từ hỏi/hành động khỏi search_query (VD: \"cho xem\", \"chi tiết\", \"thông tin\", \"về\").\n"
-    "4. User dùng đại từ (nó/đó/này) hoặc KHÔNG nêu tên/số → chép Context IDs vào task_ids.\n"
+    "{\"task_ids\": [number], \"search_query\": \"string\", \"type_filter\": \"meeting|report|reminder|event|anniversary|other|null\"}\n\n"
+    "QUY TẮC ƯU TIÊN 1 (CẤM SAI):\n"
+    "1. CHẾ ĐỘ TÌM KIẾM (Nếu User nhắc đến tên task như \"kỉ niệm cưới\", \"họp\", \"báo cáo\") → task_ids PHẢI LÀ [].\n"
+    "2. CHẾ ĐỘ ID (Chỉ dùng khi user nói \"nó\", \"đó\", \"số 3\" hoặc KHÔNG tên task) → task_ids:[ID], search_query:null.\n"
+    "3. Xử lý \"kỉ niệm cưới bao giờ\" → task_ids:[], search_query:\"cưới\", type_filter:\"anniversary\".\n"
+    "4. LÀM SẠCH: Sau khi nhận diện loại, PHẢI XÓA từ đó (báo cáo, họp, kỉ niệm...) trong search_query.\n"
+    "   - VD: \"về báo cáo test 2\" → search_query: \"test 2\".\n"
+    "5. TỰ ĐỘNG PHÁT HIỆN LOẠI và điền type_filter.\n\n"
+    "Context IDs đang hiển thị (CHỈ DÙNG TRONG CHẾ ĐỘ ID): [%s]\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SEARCH =
@@ -282,10 +261,19 @@ static const char *PROMPT_B2_SEARCH =
     "Intent: SEARCH_SEMANTIC\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|overdue|null\"}\n"
+    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|overdue|null\", \"type_filter\": \"meeting|report|reminder|event|anniversary|other|null\"}\n"
     "QUY TẮC:\n"
-    "1. search_query CHỈ chứa nội dung tìm kiếm cốt lõi, LOẠI BỎ từ \"tìm\", \"search\", \"kiếm\".\n"
+    "1. search_query CHỈ chứa nội dung tìm kiếm cốt lõi, LOẠI BỔ từ \"tìm\", \"search\", \"kiếm\" VÀ các từ chỉ loại task.\n"
     "2. Nếu user tìm task đã hoàn thành, status_filter=\"done\" (KHÔNG DÙNG complete).\n"
+    "3. TỰ ĐỘNG PHÁT HIỆN TYPE từ ngữ cảnh:\n"
+    "   - \"báo cáo\", \"report\", \"BC\" → type_filter=\"report\"\n"
+    "   - \"họp\", \"meeting\", \"cuộc họp\" → type_filter=\"meeting\"\n"
+    "   - \"nhắc\", \"nhắc nhở\", \"reminder\" → type_filter=\"reminder\"\n"
+    "   - \"sự kiện\", \"event\", \"tiệc\", \"cưới\", \"lễ\" → type_filter=\"event\"\n"
+    "   - \"kỉ niệm\", \"sinh nhật\", \"anniversary\" → type_filter=\"anniversary\"\n"
+    "   - Không rõ loại → type_filter=null\n"
+    "4. Khi phát hiện type, LOẠI BỎ từ chỉ loại khỏi search_query. VD: \"Báo cáo test 2\" → search_query=\"test 2\", type_filter=\"report\".\n"
+    "5. Nếu query CHỈ CÓ từ chỉ loại (VD: \"báo cáo\") → search_query=null, type_filter=\"report\".\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =
@@ -332,12 +320,6 @@ static void build_context_ids_str(char *buf, size_t buf_size)
 
 /**
  * Build rich time context string for prompts.
- * Pre-computes all key reference dates so AI only needs to look up.
- * Output example:
- *   Bây giờ: 2026-03-12T10:33:20 (Thứ 5, 12/03/2026)
- *   Hôm nay: 2026-03-12 | Ngày mai: 2026-03-13 (Thứ 6)
- *   Tuần này: T2=2026-03-09 → CN=2026-03-15
- *   Tháng này: 2026-03-01 → 2026-03-31
  */
 static void build_time_context(char *buf, size_t buf_size)
 {
@@ -351,15 +333,14 @@ static void build_time_context(char *buf, size_t buf_size)
     time_range_t tomorrow = time_utils_get_tomorrow_range();
     char iso_tomorrow[32], weekday_tomorrow[32];
     time_utils_format_iso8601(tomorrow.start, iso_tomorrow, sizeof(iso_tomorrow));
-    /* Chỉ lấy phần ngày YYYY-MM-DD */
     iso_tomorrow[10] = '\0';
     time_utils_get_weekday_name(tomorrow.start, weekday_tomorrow, sizeof(weekday_tomorrow));
 
-    /* This week: Monday → Sunday */
+    /* This week */
     time_range_t week = time_utils_get_this_week_range();
     char iso_mon[32], iso_sun[32];
     time_utils_format_iso8601(week.start, iso_mon, sizeof(iso_mon));
-    iso_mon[10] = '\0'; /* YYYY-MM-DD */
+    iso_mon[10] = '\0';
     time_utils_format_iso8601(week.end, iso_sun, sizeof(iso_sun));
     iso_sun[10] = '\0';
 
@@ -396,7 +377,7 @@ static void build_time_context(char *buf, size_t buf_size)
         "Tuần này: T2=%s → CN=%s\n"
         "Tuần sau: T2=%s → CN=%s\n"
         "Tháng này: %s → %s\n"
-        "Quý hiện tại: Q%d (Các tháng cuối quý: 3, 6, 9, 12)",
+        "Quý hiện tại: Q%d",
         iso_now, weekday_now, date_now,
         iso_today, iso_tomorrow, weekday_tomorrow,
         iso_mon, iso_sun,
@@ -409,7 +390,6 @@ static void build_time_context(char *buf, size_t buf_size)
 static action_type_t parse_intent(const char *intent_str)
 {
     if (intent_str == NULL) return ACTION_UNKNOWN;
-
     if (strcmp(intent_str, "CREATE_TASK") == 0)      return ACTION_CREATE_TASK;
     if (strcmp(intent_str, "UPDATE_TASK") == 0)       return ACTION_UPDATE_TASK;
     if (strcmp(intent_str, "COMPLETE_TASK") == 0)     return ACTION_COMPLETE_TASK;
@@ -420,7 +400,6 @@ static action_type_t parse_intent(const char *intent_str)
     if (strcmp(intent_str, "TASK_SUMMARY") == 0)      return ACTION_TASK_SUMMARY;
     if (strcmp(intent_str, "VIEW_HISTORY") == 0)      return ACTION_VIEW_HISTORY;
     if (strcmp(intent_str, "CHITCHAT") == 0)          return ACTION_CHITCHAT;
-
     return ACTION_UNKNOWN;
 }
 
@@ -436,42 +415,30 @@ static esp_err_t step_b1_classify(const char *user_message,
     build_time_context(time_context, sizeof(time_context));
     build_context_ids_str(context_ids, sizeof(context_ids));
 
-    /* Build prompt B1 */
     char *prompt = (char *)malloc(4096);
     if (!prompt) return ESP_ERR_NO_MEM;
     snprintf(prompt, 4096, PROMPT_B1, time_context, context_ids);
 
-    /* Gọi AI */
     char llm_response[512];
     esp_err_t err = openai_chat_completion(prompt, user_message,
                                             llm_response, sizeof(llm_response));
     free(prompt);
-    
     if (err != ESP_OK) return err;
 
-    /* Parse JSON */
     cJSON *parsed = json_extract_from_text(llm_response);
-    if (parsed == NULL) {
-        ESP_LOGE(TAG, "B1: Không parse được: %s", llm_response);
-        return ESP_FAIL;
-    }
+    if (parsed == NULL) return ESP_FAIL;
 
     const char *intent_str = json_get_string(parsed, "intent", "UNKNOWN");
     *out_intent = parse_intent(intent_str);
     *out_confidence = (float)json_get_double(parsed, "confidence", 0.0);
 
-    ESP_LOGI(TAG, "B1: intent=%s, confidence=%.2f", intent_str, *out_confidence);
-    if (out_b1_json != NULL) {
-        *out_b1_json = cJSON_Print(parsed);
-    }
-
+    if (out_b1_json != NULL) *out_b1_json = cJSON_Print(parsed);
     cJSON_Delete(parsed);
-
     return ESP_OK;
 }
 
 /* ==========================================================================
- * B2: Query Parser — build prompt chuyên biệt theo intent
+ * B2: Query Parser
  * ========================================================================== */
 static esp_err_t step_b2_parse(action_type_t intent,
                                 const char *user_message,
@@ -486,336 +453,116 @@ static esp_err_t step_b2_parse(action_type_t intent,
     if (!prompt) return ESP_ERR_NO_MEM;
 
     switch (intent) {
-        case ACTION_CREATE_TASK:
-            snprintf(prompt, prompt_size, PROMPT_B2_CREATE,
-                     time_context, user_message);
-            break;
-
-        case ACTION_QUERY_TASKS:
-            snprintf(prompt, prompt_size, PROMPT_B2_QUERY,
-                     time_context, user_message);
-            break;
-
-        case ACTION_UPDATE_TASK:
-            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
-                     time_context, "UPDATE_TASK", user_message, context_ids);
-            break;
-
-        case ACTION_COMPLETE_TASK:
-            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
-                     time_context, "COMPLETE_TASK", user_message, context_ids);
-            break;
-
-        case ACTION_DELETE_TASK:
-            snprintf(prompt, prompt_size, PROMPT_B2_MUTATE,
-                     time_context, "DELETE_TASK", user_message, context_ids);
-            break;
-
-        case ACTION_GET_DETAIL:
-            snprintf(prompt, prompt_size, PROMPT_B2_DETAIL,
-                     time_context, user_message, context_ids);
-            break;
-
-        case ACTION_SEARCH_SEMANTIC:
-            snprintf(prompt, prompt_size, PROMPT_B2_SEARCH,
-                     user_message);
-            break;
-
-        case ACTION_TASK_SUMMARY:
-            snprintf(prompt, prompt_size, PROMPT_B2_SUMMARY,
-                     time_context, user_message);
-            break;
-
-        case ACTION_VIEW_HISTORY:
-            snprintf(prompt, prompt_size, PROMPT_B2_HISTORY,
-                     user_message);
-            break;
-
-        case ACTION_CHITCHAT:
-            snprintf(prompt, prompt_size, PROMPT_B2_CHITCHAT,
-                     user_message);
-            break;
-
-        default:
-            free(prompt);
-            return ESP_FAIL;
+        case ACTION_CREATE_TASK: snprintf(prompt, prompt_size, PROMPT_B2_CREATE, time_context, user_message); break;
+        case ACTION_QUERY_TASKS: snprintf(prompt, prompt_size, PROMPT_B2_QUERY, time_context, user_message); break;
+        case ACTION_UPDATE_TASK: snprintf(prompt, prompt_size, PROMPT_B2_MUTATE, time_context, "UPDATE_TASK", user_message, context_ids); break;
+        case ACTION_COMPLETE_TASK: snprintf(prompt, prompt_size, PROMPT_B2_MUTATE, time_context, "COMPLETE_TASK", user_message, context_ids); break;
+        case ACTION_DELETE_TASK: snprintf(prompt, prompt_size, PROMPT_B2_MUTATE, time_context, "DELETE_TASK", user_message, context_ids); break;
+        case ACTION_GET_DETAIL: snprintf(prompt, prompt_size, PROMPT_B2_DETAIL, time_context, user_message, context_ids); break;
+        case ACTION_SEARCH_SEMANTIC: snprintf(prompt, prompt_size, PROMPT_B2_SEARCH, user_message); break;
+        case ACTION_TASK_SUMMARY: snprintf(prompt, prompt_size, PROMPT_B2_SUMMARY, time_context, user_message); break;
+        case ACTION_VIEW_HISTORY: snprintf(prompt, prompt_size, PROMPT_B2_HISTORY, user_message); break;
+        case ACTION_CHITCHAT: snprintf(prompt, prompt_size, PROMPT_B2_CHITCHAT, user_message); break;
+        default: free(prompt); return ESP_FAIL;
     }
 
-    /* Gọi AI lần 2 (Sử dụng malloc để tránh tràn Stack) */
     char *llm_response = (char *)malloc(JSON_BUFFER_SIZE);
-    if (!llm_response) {
-        free(prompt);
-        return ESP_ERR_NO_MEM;
-    }
+    if (!llm_response) { free(prompt); return ESP_ERR_NO_MEM; }
     
-    esp_err_t err = openai_chat_completion(prompt, user_message,
-                                            llm_response, JSON_BUFFER_SIZE);
+    esp_err_t err = openai_chat_completion(prompt, user_message, llm_response, JSON_BUFFER_SIZE);
     free(prompt);
-    
-    if (err != ESP_OK) {
-        free(llm_response);
-        return err;
-    }
+    if (err != ESP_OK) { free(llm_response); return err; }
 
-    /* Extract JSON */
     cJSON *parsed = json_extract_from_text(llm_response);
-    if (parsed == NULL) {
-        ESP_LOGE(TAG, "B2: Không parse được: %s", llm_response);
-        free(llm_response);
-        return ESP_FAIL;
-    }
+    if (parsed == NULL) { free(llm_response); return ESP_FAIL; }
     free(llm_response);
 
     *out_data_json = cJSON_Print(parsed);
     cJSON_Delete(parsed);
-
-    ESP_LOGI(TAG, "B2: data=%s", *out_data_json ? *out_data_json : "(null)");
     return ESP_OK;
 }
 
 /* ==========================================================================
- * Xử lý tin nhắn chính: B1 → B2 → Dispatch
+ * action_dispatcher_handle
  * ========================================================================== */
 esp_err_t action_dispatcher_handle(const char *user_message,
                                     char *response_buffer,
                                     size_t buffer_size)
 {
-    if (user_message == NULL || response_buffer == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
+    if (user_message == NULL || response_buffer == NULL) return ESP_ERR_INVALID_ARG;
 
-    ESP_LOGI(TAG, ">>> Xử lý: %s", user_message);
-
-    /* ======= Xử lý lệnh nhanh (Quick Commands) ======= */
+    /* ======= Quick Commands ======= */
     if (strcmp(user_message, "/alltask") == 0) {
-        ESP_LOGI(TAG, "Quick command: /alltask");
-        const char *all_query = "{\"response_type\":\"short\",\"label\":\"tất cả công việc\",\"filters\":[]}";
-        return action_query_tasks(all_query, response_buffer, buffer_size);
+        return action_query_tasks("{\"response_type\":\"short\",\"label\":\"tất cả công việc\",\"filters\":[]}", response_buffer, buffer_size);
     }
+    if (strcmp(user_message, "/confirm") == 0) return action_delete_confirm_hard(response_buffer, buffer_size);
 
-    if (strcmp(user_message, "/confirm") == 0) {
-        ESP_LOGI(TAG, "Quick command: /confirm hard delete");
-        return action_delete_confirm_hard(response_buffer, buffer_size);
-    }
-
-    if (strncmp(user_message, "/done", 5) == 0) {
-        ESP_LOGI(TAG, "Quick command: /done");
-        uint32_t ids[20];
-        int count = 0;
-        const char *p = user_message + 5;
-        while (*p && count < 20) {
-            if (*p >= '0' && *p <= '9') {
-                char *end;
-                ids[count++] = strtoul(p, &end, 10);
-                p = end;
-            } else {
-                p++;
-            }
-        }
-        if (count > 0) {
-            cJSON *root = cJSON_CreateObject();
-            cJSON *arr = cJSON_CreateArray();
-            for (int i = 0; i < count; i++) cJSON_AddItemToArray(arr, cJSON_CreateNumber(ids[i]));
-            cJSON_AddItemToObject(root, "task_ids", arr);
-            char *js = cJSON_PrintUnformatted(root);
-            esp_err_t res = action_complete_task(js, response_buffer, buffer_size);
-            free(js);
-            cJSON_Delete(root);
-            return res;
-        }
-        snprintf(response_buffer, buffer_size, "⚠️ Vui lòng nhập ID sau lệnh /done. VD: /done 1, 2, 3");
-        return ESP_OK;
-    }
-
-    /* ======= Xử lý ID Selection (phản hồi cho Ambiguity) ======= */
+    /* ======= ID Selection ======= */
     uint32_t selected_ids[20];
     int selected_count = 0;
     if (s_pending_intent != ACTION_UNKNOWN && s_pending_data_json != NULL &&
         is_id_list(user_message, selected_ids, &selected_count, 20)) {
-        
-        ESP_LOGI(TAG, "ID Selection detected for intent %d: count=%d", (int)s_pending_intent, selected_count);
-        
-        // Merge selected IDs vào s_pending_data_json
         cJSON *root = cJSON_Parse(s_pending_data_json);
         if (root) {
             cJSON_DeleteItemFromObject(root, "task_ids");
             cJSON *arr = cJSON_CreateArray();
-            for (int i = 0; i < selected_count; i++) {
-                cJSON_AddItemToArray(arr, cJSON_CreateNumber(selected_ids[i]));
-            }
+            for (int i = 0; i < selected_count; i++) cJSON_AddItemToArray(arr, cJSON_CreateNumber(selected_ids[i]));
             cJSON_AddItemToObject(root, "task_ids", arr);
-            
-            // "Xóa" search_query để handler biết là dùng IDs
             cJSON_DeleteItemFromObject(root, "search_query");
-            
-            char *merged_json = cJSON_PrintUnformatted(root);
-            cJSON_Delete(root);
-            
-            if (merged_json) {
-                action_type_t intent = s_pending_intent;
-                dispatcher_clear_pending_action(); // Clear trước khi dispatch để tránh loop nếu handler lại set pending
-                
-                esp_err_t res = ESP_FAIL;
-                switch (intent) {
-                    case ACTION_COMPLETE_TASK: res = action_complete_task(merged_json, response_buffer, buffer_size); break;
-                    case ACTION_UPDATE_TASK:   res = action_update_task(merged_json, response_buffer, buffer_size); break;
-                    case ACTION_DELETE_TASK:   res = action_delete_task(merged_json, response_buffer, buffer_size); break;
-                    default: break;
-                }
-                free(merged_json);
-                return res;
-            }
+            char *merged = cJSON_PrintUnformatted(root);
+            action_type_t intent = s_pending_intent;
+            dispatcher_clear_pending_action();
+            esp_err_t res = ESP_FAIL;
+            if (intent == ACTION_COMPLETE_TASK) res = action_complete_task(merged, response_buffer, buffer_size);
+            else if (intent == ACTION_UPDATE_TASK) res = action_update_task(merged, response_buffer, buffer_size);
+            else if (intent == ACTION_DELETE_TASK) res = action_delete_task(merged, response_buffer, buffer_size);
+            free(merged); cJSON_Delete(root); return res;
         }
     }
-
-    // Nếu không phải ID list, xóa pending action cũ (người dùng đã đổi ý hỏi sang cái khác)
     dispatcher_clear_pending_action();
 
-    /* ======= B1: Xác định intent ======= */
+    /* ======= B1 & B2 ======= */
     action_type_t intent = ACTION_UNKNOWN;
     float confidence = 0.0f;
-
     char *b1_json = NULL;
+    if (step_b1_classify(user_message, &intent, &confidence, &b1_json) != ESP_OK) return ESP_FAIL;
 
-    esp_err_t err = step_b1_classify(user_message, &intent, &confidence, &b1_json);
-    if (err != ESP_OK) {
-        snprintf(response_buffer, buffer_size,
-            "\xE2\x9A\xA0\xEF\xB8\x8F Lỗi kết nối AI. Vui lòng thử lại sau.");
-        return err;
-    }
-
-    /* Kiểm tra confidence */
-    if (confidence < 0.8f || intent == ACTION_UNKNOWN) {
-        if (b1_json != NULL) {
-            snprintf(s_last_action_json, sizeof(s_last_action_json), "<b>【B1 Intent】</b>\n<code>%s</code>\n\n<b>【B2 Parse】</b>\n<i>(không thực hiện do confidence thấp)</i>", b1_json);
-            free(b1_json);
-        }
-        snprintf(response_buffer, buffer_size,
-            "❓ <b>Tôi không chắc chắn hiểu yêu cầu này (%.0f%%).</b>\n"
-            "Bạn có thể nói rõ hơn được không?\n\n"
-            "💡 <i>Ví dụ:</i>\n"
-            "• \"Nhắc tôi nộp báo cáo ngày 31/3\"\n"
-            "• \"Tuần này có gì?\"\n"
-            "• \"Hoàn thành task báo cáo\"",
-            confidence * 100);
+    if (confidence < 0.8f) {
+        snprintf(response_buffer, buffer_size, "❓ Tôi không chắc chắn hiểu yêu cầu này (%.0f%%). Bạn nói rõ hơn nhé!", confidence * 100);
+        if (b1_json) free(b1_json); 
         return ESP_OK;
     }
 
-    /* ======= B2: Parse chi tiết ======= */
     char *data_json = NULL;
-    err = step_b2_parse(intent, user_message, &data_json);
-    if (err != ESP_OK) {
-        if (b1_json != NULL) {
-            snprintf(s_last_action_json, sizeof(s_last_action_json), "【B1 Intent】\n%s\n\n【B2 Parse】\n(Lỗi)", b1_json);
-            free(b1_json);
-        }
-        snprintf(response_buffer, buffer_size,
-            "\xE2\x9A\xA0\xEF\xB8\x8F Không phân tích được yêu cầu. Vui lòng thử lại.");
-        return err;
+    if (step_b2_parse(intent, user_message, &data_json) != ESP_OK) { 
+        if (b1_json) free(b1_json); 
+        return ESP_FAIL; 
     }
 
-    /* Lưu JSON cuối cùng để hỗ trợ lệnh /last */
-    if (b1_json != NULL || data_json != NULL) {
-        snprintf(s_last_action_json, sizeof(s_last_action_json), 
-                 "【B1 Intent】\n%s\n\n【B2 Parse】\n%s", 
-                 b1_json ? b1_json : "(null)", 
-                 data_json ? data_json : "(null)");
-    }
-    
-    if (b1_json != NULL) {
-        free(b1_json);
-        b1_json = NULL;
-    }
+    snprintf(s_last_action_json, sizeof(s_last_action_json), "【B1 Intent】\n%s\n\n【B2 Parse】\n%s", b1_json ? b1_json : "", data_json ? data_json : "");
+    if (b1_json) free(b1_json);
 
-    /* CHITCHAT: Xử lý gợi ý từ B2 */
     if (intent == ACTION_CHITCHAT) {
         cJSON *root = cJSON_Parse(data_json);
-        const char *sug = json_get_string(root, "suggestion", "");
-        if (strlen(sug) > 0) {
-            snprintf(response_buffer, buffer_size, "SUGGEST|%s", sug);
-        } else {
-            snprintf(response_buffer, buffer_size, 
-                "\xF0\x9F\x98\x8A Tôi là trợ lý quản lý công việc. Hãy thử hỏi về lịch trình của bạn nhé!");
-        }
-        if (root) cJSON_Delete(root);
-        if (data_json) free(data_json);
+        snprintf(response_buffer, buffer_size, "SUGGEST|%s", json_get_string(root, "suggestion", "Hãy thử hỏi về lịch trình của bạn!"));
+        if (root) cJSON_Delete(root); 
+        if (data_json) free(data_json); 
         return ESP_OK;
     }
 
-    /* ======= Dispatch đến handler ======= */
-    cJSON *final_data = cJSON_Parse(data_json);
-    if (final_data && s_pending_intent != ACTION_UNKNOWN && s_pending_data_json != NULL) {
-        // Kiểm tra xem AI có parse ra IDs không
-        cJSON *ids_arr = cJSON_GetObjectItem(final_data, "task_ids");
-        bool has_ids = (ids_arr && cJSON_GetArraySize(ids_arr) > 0);
-        
-        // Nếu AI parse ra IDs nhưng không có updates/query (do user chỉ nói ID), 
-        // thì merge với pending action cũ
-        if (has_ids && intent == s_pending_intent) {
-            cJSON *pending_root = cJSON_Parse(s_pending_data_json);
-            if (pending_root) {
-                ESP_LOGI(TAG, "Merging AI IDs with pending action data");
-                // Copy các field từ pending_root sang final_data (trừ task_ids và search_query)
-                cJSON *child = pending_root->child;
-                while (child) {
-                    if (strcmp(child->string, "task_ids") != 0 && strcmp(child->string, "search_query") != 0) {
-                        cJSON_DeleteItemFromObject(final_data, child->string);
-                        cJSON_AddItemToObject(final_data, child->string, cJSON_Duplicate(child, true));
-                    }
-                    child = child->next;
-                }
-                cJSON_Delete(pending_root);
-                
-                // Cập nhật lại data_json
-                free(data_json);
-                data_json = cJSON_PrintUnformatted(final_data);
-            }
-        }
-    }
-    if (final_data) cJSON_Delete(final_data);
-
-    // Clear pending state sau khi đã lấy được data
-    dispatcher_clear_pending_action();
-
+    esp_err_t res = ESP_OK;
     switch (intent) {
-        case ACTION_CREATE_TASK:
-            err = action_create_task(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_UPDATE_TASK:
-            err = action_update_task(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_COMPLETE_TASK:
-            err = action_complete_task(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_DELETE_TASK:
-            err = action_delete_task(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_QUERY_TASKS:
-            err = action_query_tasks(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_GET_DETAIL:
-            err = action_get_detail(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_SEARCH_SEMANTIC:
-            err = action_search_semantic(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_TASK_SUMMARY:
-            err = action_task_summary(data_json, response_buffer, buffer_size);
-            break;
-        case ACTION_VIEW_HISTORY:
-            err = action_view_history(data_json, response_buffer, buffer_size);
-            break;
-        default:
-            snprintf(response_buffer, buffer_size,
-                "\xE2\x9D\x93 Không hiểu yêu cầu. Vui lòng thử lại.");
-            err = ESP_OK;
-            break;
+        case ACTION_CREATE_TASK: res = action_create_task(data_json, response_buffer, buffer_size); break;
+        case ACTION_UPDATE_TASK: res = action_update_task(data_json, response_buffer, buffer_size); break;
+        case ACTION_COMPLETE_TASK: res = action_complete_task(data_json, response_buffer, buffer_size); break;
+        case ACTION_DELETE_TASK: res = action_delete_task(data_json, response_buffer, buffer_size); break;
+        case ACTION_QUERY_TASKS: res = action_query_tasks(data_json, response_buffer, buffer_size); break;
+        case ACTION_GET_DETAIL: res = action_get_detail(data_json, response_buffer, buffer_size); break;
+        case ACTION_SEARCH_SEMANTIC: res = action_search_semantic(data_json, response_buffer, buffer_size); break;
+        case ACTION_TASK_SUMMARY: res = action_task_summary(data_json, response_buffer, buffer_size); break;
+        case ACTION_VIEW_HISTORY: res = action_view_history(data_json, response_buffer, buffer_size); break;
+        default: res = ESP_FAIL; break;
     }
-
-    /* Dọn dẹp */
-    if (data_json != NULL) {
-        free(data_json);
-    }
-
-    return err;
+    if (data_json) free(data_json);
+    return res;
 }

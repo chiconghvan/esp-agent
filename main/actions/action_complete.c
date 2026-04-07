@@ -67,6 +67,20 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
     char query_buf[256];
     strncpy(query_buf, search_query, sizeof(query_buf) - 1);
     query_buf[sizeof(query_buf) - 1] = '\0';
+
+    /* Trích xuất type filter từ filters array (dành cho semantic search) */
+    const char *type_filter = NULL;
+    if (filters_arr && cJSON_IsArray(filters_arr)) {
+        cJSON *f_item;
+        cJSON_ArrayForEach(f_item, filters_arr) {
+            if (strcmp(json_get_string(f_item, "field", ""), "type") == 0) {
+                type_filter = json_get_string(f_item, "value", NULL);
+                break;
+            }
+        }
+    }
+
+    /* Đã trích xuất xong các thông tin cần thiết từ data, có thể Delete */
     cJSON_Delete(data);
 
     /* Biến lưu kết quả cuối cùng để hiển thị LCD */
@@ -128,7 +142,7 @@ esp_err_t action_complete_task(const char *data_json, char *response, size_t res
         if (openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM) == ESP_OK) {
             search_result_t results[SEARCH_TOP_K];
             int found = 0;
-            vector_search_find_similar(query_embedding, query_buf, "pending", results, SEARCH_TOP_K, &found);
+            vector_search_find_similar(query_embedding, query_buf, "pending", type_filter, results, SEARCH_TOP_K, &found);
 
             if (found > 1) {
                 /* Nhiều kết quả -> Hỏi lại (Logic này giữ nguyên như cũ) */

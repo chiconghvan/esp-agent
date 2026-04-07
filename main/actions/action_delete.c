@@ -111,16 +111,28 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
             snprintf(response + written, response_size - written, 
                 "\n👉 Gõ hoặc bấm `/confirm` để xóa sạch các task trên.");
             return ESP_OK;
-        } else {
             /* Tìm kiếm semantic */
             float query_embedding[EMBEDDING_DIM];
             if (openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM) != ESP_OK) {
                 format_error("Lỗi AI", response, response_size);
                 return ESP_FAIL;
             }
+
+            const char *type_filter = NULL;
+            cJSON *f_arr = cJSON_GetObjectItem(data, "filters");
+            if (f_arr && cJSON_IsArray(f_arr)) {
+                cJSON *f_item;
+                cJSON_ArrayForEach(f_item, f_arr) {
+                    if (strcmp(json_get_string(f_item, "field", ""), "type") == 0) {
+                        type_filter = json_get_string(f_item, "value", NULL);
+                        break;
+                    }
+                }
+            }
+
             search_result_t res[1];
             int f = 0;
-            vector_search_find_similar(query_embedding, query_buf, NULL, res, 1, &f);
+            vector_search_find_similar(query_embedding, query_buf, NULL, type_filter, res, 1, &f);
             if (f == 0) {
                 format_not_found(query_buf, response, response_size);
                 return ESP_OK;
@@ -182,9 +194,22 @@ esp_err_t action_delete_task(const char *data_json, char *response, size_t respo
         }
         float query_embedding[EMBEDDING_DIM];
         openai_create_embedding(query_buf, query_embedding, EMBEDDING_DIM);
+
+        const char *type_filter = NULL;
+        cJSON *f_arr = cJSON_GetObjectItem(data, "filters");
+        if (f_arr && cJSON_IsArray(f_arr)) {
+            cJSON *f_item;
+            cJSON_ArrayForEach(f_item, f_arr) {
+                if (strcmp(json_get_string(f_item, "field", ""), "type") == 0) {
+                    type_filter = json_get_string(f_item, "value", NULL);
+                    break;
+                }
+            }
+        }
+
         search_result_t search_results[SEARCH_TOP_K];
         int found_count = 0;
-        vector_search_find_similar(query_embedding, query_buf, NULL, search_results, SEARCH_TOP_K, &found_count);
+        vector_search_find_similar(query_embedding, query_buf, NULL, type_filter, search_results, SEARCH_TOP_K, &found_count);
         
         if (found_count == 0) {
             format_not_found(query_buf, response, response_size);

@@ -172,7 +172,7 @@ static float calculate_lexical_score(const char *target_text, const char *query_
  * Tìm kiếm semantic: top-K tasks gần nhất
  * -------------------------------------------------------------------------- */
 esp_err_t vector_search_find_similar(const float *query_embedding, const char *query_text,
-                                      const char *status_filter,
+                                      const char *status_filter, const char *type_filter,
                                       search_result_t *results, int max_results,
                                       int *found_count)
 {
@@ -209,6 +209,11 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
             } else {
                 if (strcmp(index->entries[i].status, status_filter) != 0) continue;
             }
+        }
+
+        /* Lọc theo loại task nếu có */
+        if (type_filter != NULL && strlen(type_filter) > 0) {
+            if (strcmp(index->entries[i].type, type_filter) != 0) continue;
         }
 
         /* Đọc embedding của task */

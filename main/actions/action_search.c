@@ -37,6 +37,7 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
 
     const char *search_query = json_get_string(data, "search_query", "");
     const char *status_filter = json_get_string(data, "status_filter", NULL);
+    const char *type_filter = json_get_string(data, "type_filter", NULL);
 
     char query_buf[256];
     strncpy(query_buf, search_query, sizeof(query_buf) - 1);
@@ -47,15 +48,53 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
         strncpy(status_buf, status_filter, sizeof(status_buf) - 1);
     }
 
+    char type_buf[16] = {0};
+    if (type_filter && strlen(type_filter) > 0 && strcmp(type_filter, "null") != 0) {
+        strncpy(type_buf, type_filter, sizeof(type_buf) - 1);
+    }
+
     cJSON_Delete(data);
 
-    if (strlen(query_buf) == 0) {
+    /* Nếu chỉ có type_filter mà không có search_query → query theo type thuần */
+    if (strlen(query_buf) == 0 && strlen(type_buf) == 0) {
         format_not_found("(query rỗng)", response, response_size);
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Semantic search: %s (status=%s)",
-             query_buf, status_buf[0] ? status_buf : "any");
+    ESP_LOGI(TAG, "Semantic search: query='%s' status=%s type=%s",
+             query_buf, status_buf[0] ? status_buf : "any",
+             type_buf[0] ? type_buf : "any");
+
+    /* Nếu chỉ có type mà không có search_query → liệt kê theo type */
+    if (strlen(query_buf) == 0 && strlen(type_buf) > 0) {
+        const task_index_t *index = task_database_get_index();
+        const task_index_entry_t **matches = calloc(SEARCH_TOP_K, sizeof(task_index_entry_t *));
+        if (matches == NULL) {
+            format_error("Không đủ bộ nhớ", response, response_size);
+            return ESP_ERR_NO_MEM;
+        }
+
+        int task_count = 0;
+        for (int i = 0; i < index->count && task_count < SEARCH_TOP_K; i++) {
+            if (strcmp(index->entries[i].type, type_buf) == 0) {
+                if (strcmp(index->entries[i].status, "cancelled") == 0) continue;
+                if (status_buf[0] && strcmp(index->entries[i].status, status_buf) != 0) continue;
+                matches[task_count++] = &index->entries[i];
+            }
+        }
+
+        if (task_count == 0) {
+            char label[64];
+            snprintf(label, sizeof(label), "loại \"%s\"", type_buf);
+            format_not_found(label, response, response_size);
+        } else {
+            char label[64];
+            snprintf(label, sizeof(label), "loại \"%s\"", type_buf);
+            format_task_list(matches, task_count, label, response, response_size);
+        }
+        free(matches);
+        return ESP_OK;
+    }
 
     /* Tạo embedding cho search query */
     float query_embedding[EMBEDDING_DIM];
@@ -69,7 +108,9 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
     search_result_t search_results[SEARCH_TOP_K];
     int found_count = 0;
 
-    err = vector_search_find_similar(query_embedding, query_buf, status_buf[0] ? status_buf : NULL,
+    err = vector_search_find_similar(query_embedding, query_buf,
+                                      status_buf[0] ? status_buf : NULL,
+                                      type_buf[0] ? type_buf : NULL,
                                       search_results, SEARCH_TOP_K, &found_count);
 
     if (err != ESP_OK || found_count == 0) {
@@ -100,7 +141,11 @@ esp_err_t action_search_semantic(const char *data_json, char *response, size_t r
 
     /* Format response */
     char label[300];
-    snprintf(label, sizeof(label), "tìm kiếm \"%s\"", query_buf);
+    if (type_buf[0]) {
+        snprintf(label, sizeof(label), "tìm kiếm \"%s\" (loại: %s)", query_buf, type_buf);
+    } else {
+        snprintf(label, sizeof(label), "tìm kiếm \"%s\"", query_buf);
+    }
     format_task_list(matches, task_count, label, response, response_size);
     free(matches);
 
