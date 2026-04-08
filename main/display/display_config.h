@@ -40,6 +40,6 @@ extern const uint8_t u8g2_font_iosevkacharonmono_light_13[];
 #define DISP_X_PADDING          0                   // Left margin (pixel)
 
 /* ---- Effects ---- */
-#define DISP_ENABLE_ANIMATION   1                   // 1: Enable sliding, 0: Direct
+#define DISP_ENABLE_ANIMATION   0                   // 1: Enable sliding, 0: Direct
 
 #endif /* DISPLAY_CONFIG_H */

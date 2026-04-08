@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.3.0] - 2026-04-08
+
+### Added
+- **Multi-Status Filter Support**: Added support for the pipe character (`|`) in filters (e.g., `status: "pending|overdue"`) to allow `OR` conditions for `status` and `type` in both `query_engine` and `vector_search`.
+- **Enhanced AI Time Context**: Added "Yesterday", "Last Week", and "Last Month" time ranges to the AI prompt context, enabling precise historical queries like "what did I do last week?".
+- **Undo-Aware History**: Implemented `task_database_remove_history` to automatically revert history log entries when a task completion is undone.
+- **Special Character Preservation**: Optimized AI prompts to preserve special characters (`;`, `.`, `/`, `\`, `"`) in task titles, ensuring full context is retained for embedding generation.
+
+### Changed
+- **Cleaner Search Queries**: Instructed AI to strip intent (e.g., "xong", "xóa") and task-type keywords from `search_query` to improve vector search precision.
+- **Adaptive Search Strategy**: Refactored action handlers to prioritize explicit ID selection over broad searches when context tasks are present.
+
+### Fixed
+- **History Inaccuracy**: Fixed a bug where undone tasks remained in the `history.txt` log.
+- **Missing Time Reference**: Resolved an issue where AI misidentified "last week" as "this week" due to a lack of reference dates.
+- **Build Hygiene**: Fixed several compiler warnings (`unused variable 'TAG'`) and a critical logic error in string comparison precedence.
+
 ## [v5.1.2] - 2026-04-02
 
 ### Added

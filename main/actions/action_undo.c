@@ -150,6 +150,10 @@ esp_err_t action_undo_execute(char *response, size_t buffer_size)
             case UNDO_COMPLETE:
                 // User vừa UPDATE hoặc COMPLETE -> Undo là ghi lại nội dung cũ
                 err = restore_task_and_update_embedding(&tasks[i]);
+                if (err == ESP_OK && header.action_type == UNDO_COMPLETE) {
+                    // Xóa khỏi lịch sử nếu là undo hoàn thành
+                    task_database_remove_history(tasks[i].title);
+                }
                 break;
                 
             case UNDO_DELETE:

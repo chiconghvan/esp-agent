@@ -186,14 +186,13 @@ esp_err_t task_database_write_raw(const task_record_t *task);
  */
 esp_err_t task_database_save_index(void);
 
-/**
- * @brief Lưu lịch sự hoàn thành task vào file history.txt
- * 
- * @param title Tiêu đề task
- * @param completed_at Thời điểm hoàn thành
- * @return esp_err_t ESP_OK nếu thành công
- */
 esp_err_t task_database_log_history(const char *title, time_t completed_at);
+
+/**
+ * @brief Xóa một bản ghi khỏi lịch sử (dùng cho Undo)
+ * @param title Tiêu đề task cần xóa khỏi log
+ */
+esp_err_t task_database_remove_history(const char *title);
 
 /**
  * @brief Đọc lịch sử hoàn thành task (last N entries)
@@ -203,7 +202,7 @@ esp_err_t task_database_log_history(const char *title, time_t completed_at);
  * @param limit Số lượng dòng tối đa cần đọc
  * @return esp_err_t ESP_OK nếu thành công
  */
-esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit);
+esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit, time_t start, time_t end);
 
 /**
  * @brief Kiểm tra và xóa các task đã hoàn thành quá hạn (3 ngày)

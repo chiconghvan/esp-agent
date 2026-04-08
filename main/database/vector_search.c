@@ -204,16 +204,39 @@ esp_err_t vector_search_find_similar(const float *query_embedding, const char *q
 
         /* Lọc theo trạng thái nếu có */
         if (status_filter != NULL && strlen(status_filter) > 0) {
-            if (strcmp(status_filter, "pending") == 0 || strcmp(status_filter, "incomplete") == 0) {
-                if (strcmp(index->entries[i].status, "pending") != 0 && strcmp(index->entries[i].status, "overdue") != 0) continue;
+            bool matched = false;
+            if (strchr(status_filter, '|') != NULL) {
+                char tmp[64]; strncpy(tmp, status_filter, sizeof(tmp)-1); tmp[sizeof(tmp)-1] = '\0';
+                char *token = strtok(tmp, "|");
+                while (token) {
+                    if (strcmp(index->entries[i].status, token) == 0) { matched = true; break; }
+                    if (strcmp(token, "pending") == 0 && strcmp(index->entries[i].status, "overdue") == 0) { matched = true; break; }
+                    token = strtok(NULL, "|");
+                }
             } else {
-                if (strcmp(index->entries[i].status, status_filter) != 0) continue;
+                if (strcmp(status_filter, "pending") == 0 || strcmp(status_filter, "incomplete") == 0) {
+                    matched = (strcmp(index->entries[i].status, "pending") == 0 || strcmp(index->entries[i].status, "overdue") == 0);
+                } else {
+                    matched = (strcmp(index->entries[i].status, status_filter) == 0);
+                }
             }
+            if (!matched) continue;
         }
 
         /* Lọc theo loại task nếu có */
         if (type_filter != NULL && strlen(type_filter) > 0) {
-            if (strcmp(index->entries[i].type, type_filter) != 0) continue;
+            bool matched = false;
+            if (strchr(type_filter, '|') != NULL) {
+                char tmp[64]; strncpy(tmp, type_filter, sizeof(tmp)-1); tmp[sizeof(tmp)-1] = '\0';
+                char *token = strtok(tmp, "|");
+                while (token) {
+                    if (strcmp(index->entries[i].type, token) == 0) { matched = true; break; }
+                    token = strtok(NULL, "|");
+                }
+            } else {
+                matched = (strcmp(index->entries[i].type, type_filter) == 0);
+            }
+            if (!matched) continue;
         }
 
         /* Đọc embedding của task */

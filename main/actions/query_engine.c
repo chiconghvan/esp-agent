@@ -110,7 +110,21 @@ static bool match_filter(const task_index_entry_t *entry,
         const char *val = (strcmp(filter->field, "status") == 0) ? entry->status : entry->type;
         if (val == NULL) return filter->op == FILTER_OP_IS_NULL;
 
-        /* Support "pending" including "overdue" */
+        /* Support '|' for OR conditions (e.g., "pending|overdue") */
+        if (filter->op == FILTER_OP_EQUALS && strchr(filter->str_value, '|') != NULL) {
+            char tmp[64];
+            strncpy(tmp, filter->str_value, sizeof(tmp)-1); tmp[sizeof(tmp)-1] = '\0';
+            char *token = strtok(tmp, "|");
+            while (token) {
+                if (strcmp(val, token) == 0) return true;
+                /* Đặc biệt: status "pending" luôn bao gồm "overdue" */
+                if (strcmp(filter->field, "status") == 0 && strcmp(token, "pending") == 0 && strcmp(val, "overdue") == 0) return true;
+                token = strtok(NULL, "|");
+            }
+            return false;
+        }
+
+        /* Support "pending" including "overdue" (đã có từ trước cho case không có '|') */
         if (strcmp(filter->field, "status") == 0 && strcmp(filter->str_value, "pending") == 0 && filter->op == FILTER_OP_EQUALS) {
             return (strcmp(val, "pending") == 0 || strcmp(val, "overdue") == 0);
         }

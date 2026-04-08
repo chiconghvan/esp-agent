@@ -177,6 +177,7 @@ static const char *PROMPT_B2_CREATE =
     "4. Thiếu năm → dùng năm hiện tại. TUYỆT ĐỐI KHÔNG dùng năm 1970.\n"
     "5. TRA BẢNG thời gian ở trên cho \"ngày mai\", \"tuần sau\"... KHÔNG tự tính.\n"
     "6. Chu kỳ lặp (hàng tuần/tháng/quý): Thời hạn (due_time) PHẢI là kỳ KẾ TIẾP trong TƯƠNG LAI. Ví dụ: Nếu hôm nay (T6) user bảo 'thứ 2 hàng tuần', thì due_time phải ở TUẦN SAU (T2=...).\n"
+    "7. TIÊU ĐỀ: Phải giữ nguyên các ký tự đặc biệt (nếu có) như ; . / \\ \" trong tên task. CẤM tự ý ngắt hay rút gọn.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_QUERY =
@@ -220,23 +221,27 @@ static const char *PROMPT_B2_MUTATE =
     "Trả JSON:\n"
     "{\n"
     "  \"task_ids\": [number],\n"
-    "  \"search_query\": \"string nếu không có ID cụ thể\",\n"
+    "  \"search_query\": \"nội dung tìm kiếm\",\n"
     "  \"filters\": [\n"
-    "    {\"field\": \"status\", \"op\": \"equals\", \"value\": \"pending|done|overdue\"},\n"
-    "    {\"field\": \"type\", \"op\": \"equals\", \"value\": \"report|meeting|reminder|event|anniversary\"}\n"
+    "    {\"field\": \"status\", \"op\": \"equals\", \"value\": \"pending\"},\n"
+    "    {\"field\": \"type\", \"op\": \"equals\", \"value\": \"report\"}\n"
     "  ],\n"
-    "  \"updates\": {\"title\": \"string\", \"type\": \"string\", \"due_time\": \"ISO8601\"}\n"
+    "  \"updates\": {\"title\": \"string\", \"type\": \"string\", \"due_time\": \"ISO8601\"},\n"
+    "  \"delete_mode\": \"soft\"\n"
     "}\n\n"
-    "QUY TẮC CHỌN TASK (ƯU TIÊN 1 - CỰC KỲ QUAN TRỌNG):\n"
-    "1. CHỈ CHỌN 1 TRONG 2 CHẾ ĐỘ:\n"
-    "   - CHẾ ĐỘ ID: User nói số (\"số 5\") hoặc đại từ (\"nó\", \"đó\") → task_ids:[ID], search_query:null.\n"
-    "   - CHẾ ĐỘ TÌM KIẾM: User nói TÊN/MÔ TẢ task (VD: \"kỉ niệm cưới\", \"báo cáo\") → task_ids:[] (BẮT BUỘC RỖNG), search_query:\"tên task\".\n"
-    "2. TUYỆT ĐỐI NGHIÊM CẤM: Không được điền task_ids nếu user đang tìm theo tên.\n"
-    "3. TỰ ĐỘNG PHÁT HIỆN TYPE và đưa vào filters. VD: \"xong báo cáo test\" → search_query=\"test\", filters:[{field:\"type\", op:\"=\", value:\"report\"}].\n"
-    "4. LÀM SẠCH search_query: PHẢI XÓA bỏ các từ chỉ loại (báo cáo, họp, kỉ niệm...) khỏi search_query.\n"
-    "   - VD: \"hủy họp sáng nay\" → search_query: \"sáng nay\", type: \"meeting\".\n"
-    "   - VD: \"xong báo cáo test\" → search_query: \"test\", type: \"report\".\n\n"
-    "Context IDs đang hiển thị (CHỈ DÙNG CHO CHẾ ĐỘ ID): [%s]\n"
+    "QUY TẮC FILTER STATUS:\n"
+    "1. COMPLETE_TASK & UPDATE_TASK: Ưu tiên tìm task chưa xong → value: \"pending|overdue\".\n"
+    "2. Cho phép dùng ký tự `|` để kết hợp nhiều giá trị (OR) cho trường status hoặc type (Ví dụ: \"pending|overdue\", \"meeting|report\").\n\n"
+    "QUY TẮC CHỌN TASK & LÀM SẠCH SEARCH_QUERY:\n"
+    "4. TỐI ƯU SEARCH: search_query CHỈ chứa tên riêng/nội dung cốt lõi của task. TUYỆT ĐỐI XÓA các từ sau khỏi search_query:\n"
+    "   - Từ chỉ hành động (intent): xong, hoàn thành, cập nhật, đổi, sửa, hủy, xóa, bỏ...\n"
+    "   - Từ chỉ phân loại (type): báo cáo, họp, nhắc nhở, sự kiện, kỉ niệm, sinh nhật...\n"
+    "   - Ví dụ: \"xong báo cáo nq 71\" → search_query: \"nq 71\", type: \"report\", status: \"pending\".\n"
+    "5. CHẾ ĐỘ ID (nói \"nó\", \"đó\", \"số 3\"): task_ids:[ID], search_query:null.\n"
+    "6. CHẾ ĐỘ SEARCH (nói tên task): task_ids:[], search_query:\"tên đã làm sạch\".\n"
+    "7. DELETE_MODE (Chỉ cho DELETE_TASK): \"hủy/bỏ\"=soft, \"xóa hẳn/hoàn toàn\"=hard. Mặc định soft.\n"
+    "8. GIỮ NGUYÊN ký tự đặc biệt (;, ., /, \\, \") trong tiêu đề task. KHÔNG được ngắt hay bỏ sót phần nội dung sau dấu ngăn cách.\n\n"
+    "Context IDs (cho CHẾ ĐỘ ID): [%s]\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_DETAIL =
@@ -245,9 +250,10 @@ static const char *PROMPT_B2_DETAIL =
     "Intent: GET_TASK_DETAIL\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"task_ids\": [number], \"search_query\": \"string\", \"type_filter\": \"meeting|report|reminder|event|anniversary|other|null\"}\n\n"
+    "{\"task_ids\": [number], \"search_query\": \"string\", \"type_filter\": \"...|null\"}\n\n"
     "QUY TẮC ƯU TIÊN 1 (CẤM SAI):\n"
-    "1. CHẾ ĐỘ TÌM KIẾM (Nếu User nhắc đến tên task như \"kỉ niệm cưới\", \"họp\", \"báo cáo\") → task_ids PHẢI LÀ [].\n"
+    "1. TỐI ƯU SEARCH: search_query CHỈ chứa nội dung cốt lõi của task. XÓA các từ chỉ hành động (xem, chi tiết, cho tôi...) và từ chỉ phân loại (báo cáo, họp...) khỏi search_query.\n"
+    "2. CHẾ ĐỘ TÌM KIẾM (Nếu User nhắc đến tên task) → task_ids PHẢI LÀ [].\n"
     "2. CHẾ ĐỘ ID (Chỉ dùng khi user nói \"nó\", \"đó\", \"số 3\" hoặc KHÔNG tên task) → task_ids:[ID], search_query:null.\n"
     "3. Xử lý \"kỉ niệm cưới bao giờ\" → task_ids:[], search_query:\"cưới\", type_filter:\"anniversary\".\n"
     "4. LÀM SẠCH: Sau khi nhận diện loại, PHẢI XÓA từ đó (báo cáo, họp, kỉ niệm...) trong search_query.\n"
@@ -261,19 +267,13 @@ static const char *PROMPT_B2_SEARCH =
     "Intent: SEARCH_SEMANTIC\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"pending|done|cancelled|overdue|null\", \"type_filter\": \"meeting|report|reminder|event|anniversary|other|null\"}\n"
+    "{\"search_query\": \"cụm từ chính\", \"status_filter\": \"...|null\", \"type_filter\": \"...|null\"}\n"
     "QUY TẮC:\n"
-    "1. search_query CHỈ chứa nội dung tìm kiếm cốt lõi, LOẠI BỔ từ \"tìm\", \"search\", \"kiếm\" VÀ các từ chỉ loại task.\n"
+    "1. TỐI ƯU SEARCH: search_query CHỈ chứa nội dung cốt lõi của task. XÓA các từ chỉ hành động (tìm, search, là gì) và từ chỉ phân loại (báo cáo, lịch họp...) khỏi search_query.\n"
     "2. Nếu user tìm task đã hoàn thành, status_filter=\"done\" (KHÔNG DÙNG complete).\n"
-    "3. TỰ ĐỘNG PHÁT HIỆN TYPE từ ngữ cảnh:\n"
-    "   - \"báo cáo\", \"report\", \"BC\" → type_filter=\"report\"\n"
-    "   - \"họp\", \"meeting\", \"cuộc họp\" → type_filter=\"meeting\"\n"
-    "   - \"nhắc\", \"nhắc nhở\", \"reminder\" → type_filter=\"reminder\"\n"
-    "   - \"sự kiện\", \"event\", \"tiệc\", \"cưới\", \"lễ\" → type_filter=\"event\"\n"
-    "   - \"kỉ niệm\", \"sinh nhật\", \"anniversary\" → type_filter=\"anniversary\"\n"
-    "   - Không rõ loại → type_filter=null\n"
-    "4. Khi phát hiện type, LOẠI BỎ từ chỉ loại khỏi search_query. VD: \"Báo cáo test 2\" → search_query=\"test 2\", type_filter=\"report\".\n"
-    "5. Nếu query CHỈ CÓ từ chỉ loại (VD: \"báo cáo\") → search_query=null, type_filter=\"report\".\n"
+    "3. TỰ ĐỘNG PHÁT HIỆN TYPE từ ngữ cảnh (báo cáo, họp, nhắc, sự kiện...) và ĐƯA VÀO type_filter. Sau đó LOẠI BỎ từ chỉ loại khỏi search_query.\n"
+    "   - Ví dụ: \"tìm báo cáo test 2\" → search_query: \"test 2\", type_filter: \"report\".\n"
+    "4. Nếu query CHỈ CÓ từ chỉ loại (VD: \"báo cáo\") → search_query: null, type_filter: \"report\".\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_SUMMARY =
@@ -288,11 +288,15 @@ static const char *PROMPT_B2_SUMMARY =
 
 static const char *PROMPT_B2_HISTORY =
     "Bạn là parser lịch sử công việc.\n"
+    "%s\n"
     "Intent: VIEW_HISTORY\n"
     "User: \"%s\"\n\n"
     "Trả JSON:\n"
-    "{\"limit\": 10, \"period\": \"all|recent|today\"}\n"
-    "Mặc định: limit=10, period=\"recent\".\n"
+    "{\"limit\": number|null, \"period_start\": \"ISO8601|null\", \"period_end\": \"ISO8601|null\"}\n\n"
+    "QUY TẮC:\n"
+    "1. Nếu user hỏi về một mốc thời gian (VD: \"tuần này\", \"hôm qua\", \"tháng 3\") → Điền period_start và period_end tương ứng (TRA BẢNG thời gian ở trên). Khi đó set limit=null.\n"
+    "2. Nếu user KHÔNG hỏi mốc thời gian cụ thể (VD: \"lịch sử gần đây\") → set limit=10, period_start=null, period_end=null.\n"
+    "3. TRA BẢNG ĐỂ BIẾT NGÀY: \"tuần này\" bắt đầu từ Thứ 2 nào, \"hôm nay\" là ngày nào.\n"
     "CHỈ JSON thuần.";
 
 static const char *PROMPT_B2_CHITCHAT =
@@ -366,6 +370,28 @@ static void build_time_context(char *buf, size_t buf_size)
     time_utils_format_iso8601(today.start, iso_today, sizeof(iso_today));
     iso_today[10] = '\0';
 
+    /* Yesterday */
+    time_range_t yesterday = time_utils_get_yesterday_range();
+    char iso_yesterday[32];
+    time_utils_format_iso8601(yesterday.start, iso_yesterday, sizeof(iso_yesterday));
+    iso_yesterday[10] = '\0';
+
+    /* Last week */
+    time_range_t last_week = time_utils_get_last_week_range();
+    char iso_last_mon[32], iso_last_sun[32];
+    time_utils_format_iso8601(last_week.start, iso_last_mon, sizeof(iso_last_mon));
+    iso_last_mon[10] = '\0';
+    time_utils_format_iso8601(last_week.end, iso_last_sun, sizeof(iso_last_sun));
+    iso_last_sun[10] = '\0';
+
+    /* Last month */
+    time_range_t last_month = time_utils_get_last_month_range();
+    char iso_last_month_start[32], iso_last_month_end[32];
+    time_utils_format_iso8601(last_month.start, iso_last_month_start, sizeof(iso_last_month_start));
+    iso_last_month_start[10] = '\0';
+    time_utils_format_iso8601(last_month.end, iso_last_month_end, sizeof(iso_last_month_end));
+    iso_last_month_end[10] = '\0';
+
     /* Current Quarter */
     struct tm tm_now;
     localtime_r(&now, &tm_now);
@@ -373,15 +399,19 @@ static void build_time_context(char *buf, size_t buf_size)
 
     snprintf(buf, buf_size,
         "Bây giờ: %s (%s, %s)\n"
-        "Hôm nay: %s | Ngày mai: %s (%s)\n"
+        "Hôm qua: %s | Hôm nay: %s | Ngày mai: %s (%s)\n"
+        "Tuần trước: T2=%s → CN=%s\n"
         "Tuần này: T2=%s → CN=%s\n"
         "Tuần sau: T2=%s → CN=%s\n"
+        "Tháng trước: %s → %s\n"
         "Tháng này: %s → %s\n"
         "Quý hiện tại: Q%d",
         iso_now, weekday_now, date_now,
-        iso_today, iso_tomorrow, weekday_tomorrow,
+        iso_yesterday, iso_today, iso_tomorrow, weekday_tomorrow,
+        iso_last_mon, iso_last_sun,
         iso_mon, iso_sun,
         iso_nxt_mon, iso_nxt_sun,
+        iso_last_month_start, iso_last_month_end,
         iso_month_start, iso_month_end,
         current_q);
 }
@@ -461,7 +491,7 @@ static esp_err_t step_b2_parse(action_type_t intent,
         case ACTION_GET_DETAIL: snprintf(prompt, prompt_size, PROMPT_B2_DETAIL, time_context, user_message, context_ids); break;
         case ACTION_SEARCH_SEMANTIC: snprintf(prompt, prompt_size, PROMPT_B2_SEARCH, user_message); break;
         case ACTION_TASK_SUMMARY: snprintf(prompt, prompt_size, PROMPT_B2_SUMMARY, time_context, user_message); break;
-        case ACTION_VIEW_HISTORY: snprintf(prompt, prompt_size, PROMPT_B2_HISTORY, user_message); break;
+        case ACTION_VIEW_HISTORY: snprintf(prompt, prompt_size, PROMPT_B2_HISTORY, time_context, user_message); break;
         case ACTION_CHITCHAT: snprintf(prompt, prompt_size, PROMPT_B2_CHITCHAT, user_message); break;
         default: free(prompt); return ESP_FAIL;
     }
@@ -502,23 +532,38 @@ esp_err_t action_dispatcher_handle(const char *user_message,
     int selected_count = 0;
     if (s_pending_intent != ACTION_UNKNOWN && s_pending_data_json != NULL &&
         is_id_list(user_message, selected_ids, &selected_count, 20)) {
+        
         cJSON *root = cJSON_Parse(s_pending_data_json);
         if (root) {
             cJSON_DeleteItemFromObject(root, "task_ids");
             cJSON *arr = cJSON_CreateArray();
-            for (int i = 0; i < selected_count; i++) cJSON_AddItemToArray(arr, cJSON_CreateNumber(selected_ids[i]));
+            for (int i = 0; i < selected_count; i++) {
+                uint32_t final_id = selected_ids[i];
+                /* Nếu user nhập số nhỏ (1, 2, 3...) -> Kiểm tra xem có phải là STT trong context đang hiện không */
+                if (final_id > 0 && final_id <= (uint32_t)s_context_task_count) {
+                    final_id = s_context_task_ids[final_id - 1]; // Chuyển từ STT (1-based) sang ID
+                }
+                cJSON_AddItemToArray(arr, cJSON_CreateNumber(final_id));
+            }
             cJSON_AddItemToObject(root, "task_ids", arr);
             cJSON_DeleteItemFromObject(root, "search_query");
+            
             char *merged = cJSON_PrintUnformatted(root);
             action_type_t intent = s_pending_intent;
-            dispatcher_clear_pending_action();
+            dispatcher_clear_pending_action(); // Xóa sau khi đã lấy xong data
+            
             esp_err_t res = ESP_FAIL;
             if (intent == ACTION_COMPLETE_TASK) res = action_complete_task(merged, response_buffer, buffer_size);
             else if (intent == ACTION_UPDATE_TASK) res = action_update_task(merged, response_buffer, buffer_size);
             else if (intent == ACTION_DELETE_TASK) res = action_delete_task(merged, response_buffer, buffer_size);
-            free(merged); cJSON_Delete(root); return res;
+            
+            free(merged);
+            cJSON_Delete(root);
+            return res;
         }
     }
+    
+    /* CHỈ xóa pending action nếu tin nhắn này không phải là list ID và ta sẽ thực hiện Step B1 mới */
     dispatcher_clear_pending_action();
 
     /* ======= B1 & B2 ======= */

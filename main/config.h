@@ -21,7 +21,7 @@
  * =========================================================================== */
 
 /** Phiên bản Firmware (dùng cho GitHub & Rollback) */
-#define FIRMWARE_VERSION         "5.1.2"
+#define FIRMWARE_VERSION         "5.3.0"
 
 /* ===========================================================================
  * WiFi Configuration (Mặc định nếu NVS trống, hoặc cấu hình qua Captive Portal)

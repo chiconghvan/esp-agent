@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include "esp_log.h"
@@ -704,10 +705,61 @@ esp_err_t task_database_log_history(const char *title, time_t completed_at)
     return ESP_OK;
 }
 
+esp_err_t task_database_remove_history(const char *title)
+{
+    if (title == NULL) return ESP_ERR_INVALID_ARG;
+
+    FILE *f = fopen(TASK_HISTORY_FILE, "r");
+    if (f == NULL) return ESP_OK; // No history to remove
+
+    /* Rewriting the whole file to remove entries. 
+       Usually we only undo VERY recent logs, so we skip the most recent matching entry. */
+    char temp_path[] = "/spiffs/history_tmp.txt";
+    FILE *ft = fopen(temp_path, "w");
+    if (ft == NULL) { fclose(f); return ESP_FAIL; }
+
+    char line[256];
+    long match_time = -1;
+    
+    // Pass 1: Find the most recent matching line (highest timestamp)
+    while (fgets(line, sizeof(line), f)) {
+        char *sep = strchr(line, '|');
+        if (sep && (strcmp(sep + 1, title) == 0 || (strlen(sep+1)>0 && strncmp(sep+1, title, strlen(title))==0))) {
+            long t = atol(line);
+            if (t > match_time) {
+                match_time = t;
+            }
+        }
+    }
+    
+    // Pass 2: Copy everything EXCEPT the one we found
+    rewind(f);
+    bool removed = false;
+    while (fgets(line, sizeof(line), f)) {
+        if (!removed) {
+            char *sep = strchr(line, '|');
+            if (sep && atol(line) == match_time && (strcmp(sep + 1, title) == 0 || strncmp(sep+1, title, strlen(title))==0)) {
+                removed = true;
+                continue;
+            }
+        }
+        fputs(line, ft);
+    }
+    
+    fclose(f);
+    fclose(ft);
+    
+    unlink(TASK_HISTORY_FILE);
+    rename(temp_path, TASK_HISTORY_FILE);
+    
+    ESP_LOGI(TAG, "Đã xóa lịch sử của: %s", title);
+    return ESP_OK;
+}
+
 /* --------------------------------------------------------------------------
  * Đọc lịch sử hoàn thành task (Last N lines)
  * -------------------------------------------------------------------------- */
-esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit)
+esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit, time_t start, time_t end)
 {
     FILE *f = fopen(TASK_HISTORY_FILE, "r");
     if (f == NULL) {
@@ -715,55 +767,95 @@ esp_err_t task_database_read_history(char *buffer, size_t buffer_size, int limit
         return ESP_OK;
     }
 
-    /* Đọc toàn bộ các dòng và lưu vào mảng tạm (để lấy N dòng cuối) */
+    bool filter_by_time = (start > 0 || end > 0);
+    if (end == 0 && filter_by_time) end = 0x7FFFFFFF; // Max time
+
+    /* Format tiêu đề */
+    int written = 0;
+    if (filter_by_time) {
+        char s_buf[32], e_buf[32];
+        time_utils_format_date_short(start, s_buf, sizeof(s_buf));
+        time_utils_format_date_short(end, e_buf, sizeof(e_buf));
+        written += snprintf(buffer + written, buffer_size - written, "📜 <b>Lịch sử hoàn thành (%s - %s):</b>\n\n", s_buf, e_buf);
+    } else {
+        written += snprintf(buffer + written, buffer_size - written, "📜 <b>Lịch sử %d công việc gần nhất:</b>\n\n", limit);
+    }
+
+    /* Đọc toàn bộ các dòng và lọc */
     char line[256];
-    char **lines = calloc(limit, sizeof(char *));
-    int count = 0;
+    char **matched_lines = NULL;
+    int matched_count = 0;
+    int max_match = (limit > 0 && !filter_by_time) ? limit : 200; // Cap at 200 for range search to avoid RAM explosion
+    
+    matched_lines = calloc(max_match, sizeof(char *));
+    if (!matched_lines) { fclose(f); return ESP_ERR_NO_MEM; }
 
     while (fgets(line, sizeof(line), f)) {
-        // Remove newline
         line[strcspn(line, "\r\n")] = 0;
         if (strlen(line) == 0) continue;
 
-        if (lines[count % limit]) free(lines[count % limit]);
-        lines[count % limit] = strdup(line);
-        count++;
+        char *sep = strchr(line, '|');
+        if (!sep) continue;
+
+        time_t t = (time_t)atol(line);
+        if (filter_by_time) {
+            if (t < start || t > end) continue;
+        }
+
+        /* Thêm vào danh sách match (theo kiểu circular buffer if limit is set, or just append) */
+        if (limit > 0 && !filter_by_time) {
+            // Circular buffer for "last N"
+            if (matched_lines[matched_count % limit]) free(matched_lines[matched_count % limit]);
+            matched_lines[matched_count % limit] = strdup(line);
+            matched_count++;
+        } else {
+            // Append mode for range
+            if (matched_count < max_match) {
+                matched_lines[matched_count++] = strdup(line);
+            }
+        }
     }
     fclose(f);
 
-    if (count == 0) {
-        strncpy(buffer, "<i>(Lịch sử trống)</i>", buffer_size - 1);
-        free(lines);
+    if (matched_count == 0) {
+        strncpy(buffer, "<i>(Không tìm thấy lịch sử phù hợp)</i>", buffer_size - 1);
+        for (int i=0; i<max_match; i++) if(matched_lines[i]) free(matched_lines[i]);
+        free(matched_lines);
         return ESP_OK;
     }
 
     /* Format kết quả */
-    int start = (count > limit) ? (count % limit) : 0;
-    int items_to_show = (count > limit) ? limit : count;
-    int written = 0;
-    
-    written += snprintf(buffer + written, buffer_size - written, "📜 <b>Lịch sử %d công việc gần nhất:</b>\n\n", items_to_show);
-
-    for (int i = 0; i < items_to_show; i++) {
-        int idx = (start + i) % limit;
-        char *l = lines[idx];
-        if (!l) continue;
-
-        char *sep = strchr(l, '|');
-        if (sep) {
-            *sep = '\0';
-            time_t t = (time_t)atol(l);
-            const char *title = sep + 1;
-            
-            char time_buf[32];
-            time_utils_format_date_short(t, time_buf, sizeof(time_buf));
-            
-            written += snprintf(buffer + written, buffer_size - written, "✅ [%s] %s\n", time_buf, title);
+    if (limit > 0 && !filter_by_time) {
+        int s = (matched_count > limit) ? (matched_count % limit) : 0;
+        int n = (matched_count > limit) ? limit : matched_count;
+        for (int i = 0; i < n; i++) {
+            int idx = (s + i) % limit;
+            char *l = matched_lines[idx];
+            char *sep = strchr(l, '|');
+            if (sep) {
+                time_t t = (time_t)atol(l);
+                char t_buf[32];
+                time_utils_format_iso8601(t, t_buf, sizeof(t_buf)); t_buf[16] = '\0';
+                written += snprintf(buffer + written, buffer_size - written, "✅ [%s] %s\n", t_buf + 5, sep + 1);
+            }
+            free(l);
         }
-        free(l);
+    } else {
+        // Show all matches for range
+        for (int i = 0; i < matched_count; i++) {
+            char *l = matched_lines[i];
+            char *sep = strchr(l, '|');
+            if (sep) {
+                time_t t = (time_t)atol(l);
+                char t_buf[32];
+                time_utils_format_iso8601(t, t_buf, sizeof(t_buf)); t_buf[16] = '\0';
+                written += snprintf(buffer + written, buffer_size - written, "✅ [%s] %s\n", t_buf + 5, sep + 1);
+            }
+            free(l);
+        }
     }
-    free(lines);
-
+    
+    free(matched_lines);
     return ESP_OK;
 }
 
